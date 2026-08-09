@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="512" height="512" viewBox="0 0 512 512" version="1.1" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="bg-grad" cx="50%" cy="50%" r="50%" fx="35%" fy="35%">
+      <stop offset="0%" stop-color="#7dc424" />
+      <stop offset="65%" stop-color="#6dac20" />
+      <stop offset="100%" stop-color="#568819" />
+    </radialGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000000" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+
+  <!-- Outer Badge Ring -->
+  <circle cx="256" cy="256" r="246" fill="url(#bg-grad)" />
+  <circle cx="256" cy="256" r="232" fill="none" stroke="#ffffff" stroke-opacity="0.35" stroke-width="3" />
+
+  <g filter="url(#shadow)" fill="#ffffff">
+    <!-- Main Center Graphic: 3x3 Loxone Icon Grid Grid/Set -->
+    
+    <!-- Row 1 (Top) -->
+    <!-- Tile 1 (Light / Lamp) -->
+    <rect x="166" y="85" width="52" height="52" rx="12" fill="#ffffff" />
+    <circle cx="192" cy="107" r="10" fill="#6dac20" />
+    <rect x="189" y="120" width="6" height="4" rx="1" fill="#6dac20" />
+
+    <!-- Tile 2 (Temperature / Thermometer) -->
+    <rect x="230" y="85" width="52" height="52" rx="12" fill="#ffffff" />
+    <circle cx="256" cy="116" r="6" fill="#6dac20" />
+    <rect x="254" y="97" width="4" height="15" rx="2" fill="#6dac20" />
+
+    <!-- Tile 3 (Blinds / Sun) -->
+    <rect x="294" y="85" width="52" height="52" rx="12" fill="#ffffff" />
+    <circle cx="320" cy="111" r="7" fill="#6dac20" />
+    <line x1="320" y1="99" x2="320" y2="101" stroke="#6dac20" stroke-width="2.5" stroke-linecap="round" />
+    <line x1="320" y1="121" x2="320" y2="123" stroke="#6dac20" stroke-width="2.5" stroke-linecap="round" />
+    <line x1="308" y1="111" x2="310" y2="111" stroke="#6dac20" stroke-width="2.5" stroke-linecap="round" />
+    <line x1="330" y1="111" x2="332" y2="111" stroke="#6dac20" stroke-width="2.5" stroke-linecap="round" />
+
+    <!-- Row 2 (Middle) -->
+    <!-- Tile 4 (Music / Speaker) -->
+    <rect x="166" y="149" width="52" height="52" rx="12" fill="#ffffff" />
+    <polygon points="183,175 191,175 199,181 199,169 191,175" fill="#6dac20" />
+    <path d="M 202 171 A 6 6 0 0 1 202 179" fill="none" stroke="#6dac20" stroke-width="2" stroke-linecap="round" />
+
+    <!-- Tile 5 (Center Highlight: Download Loxone Icon Tile) -->
+    <rect x="230" y="149" width="52" height="52" rx="12" fill="#ffffff" />
+    <path d="M 256 160 L 256 182 M 248 175 L 256 183 L 264 175" fill="none" stroke="#6dac20" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+    <line x1="246" y1="189" x2="266" y2="189" stroke="#6dac20" stroke-width="3.5" stroke-linecap="round" />
+
+    <!-- Tile 6 (Security / Lock) -->
+    <rect x="294" y="149" width="52" height="52" rx="12" fill="#ffffff" />
+    <rect x="311" y="174" width="18" height="13" rx="3" fill="#6dac20" />
+    <path d="M 314 174 L 314 170 C 314 167 317 165 320 165 C 323 165 326 167 326 170 L 326 174" fill="none" stroke="#6dac20" stroke-width="2.5" stroke-linecap="round" />
+
+    <!-- Row 3 (Bottom) -->
+    <!-- Tile 7 (Power / Energy) -->
+    <rect x="166" y="213" width="52" height="52" rx="12" fill="#ffffff" />
+    <polygon points="194,223 186,239 193,239 190,253 200,235 193,235" fill="#6dac20" />
+
+    <!-- Tile 8 (Water / Irrigation) -->
+    <rect x="230" y="213" width="52" height="52" rx="12" fill="#ffffff" />
+    <path d="M 256 223 C 256 223 246 236 246 242 C 246 247.5 250.5 251.5 256 251.5 C 261.5 251.5 266 247.5 266 242 C 266 236 256 223 256 223 Z" fill="#6dac20" />
+
+    <!-- Tile 9 (Gauge / Meter) -->
+    <rect x="294" y="213" width="52" height="52" rx="12" fill="#ffffff" />
+    <path d="M 310 244 A 13 13 0 1 1 330 244" fill="none" stroke="#6dac20" stroke-width="3" stroke-linecap="round" />
+    <line x1="320" y1="239" x2="325" y2="231" stroke="#6dac20" stroke-width="2.5" stroke-linecap="round" />
+
+    <!-- Flanking Left Symbol: Cloud Download -->
+    <g transform="translate(112, 175)">
+      <circle cx="0" cy="0" r="22" fill="#ffffff" />
+      <path d="M -8 2 C -8 -3 -4 -6 1 -6 C 5 -6 8 -3 9 0 C 11 0 13 2 12 5 C 11 8 8 9 5 9 L -5 9 C -8 9 -10 6 -8 2 Z" fill="#6dac20" />
+      <path d="M 0 0 L 0 12 M -4 8 L 0 12 L 4 8" fill="none" stroke="#6dac20" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+    </g>
+
+    <!-- Flanking Right Symbol: Palette / Design Icons -->
+    <g transform="translate(400, 175)">
+      <circle cx="0" cy="0" r="22" fill="#ffffff" />
+      <path d="M 0 -11 C -7 -11 -12 -6 -12 0 C -12 6 -7 11 0 11 C 3 11 5 9 5 7 C 5 5 4 4 6 4 L 8 4 C 10.5 4 12 2 12 0 C 12 -6 7 -11 0 -11 Z" fill="#6dac20" />
+      <circle cx="-5" cy="-4" r="2" fill="#ffffff" />
+      <circle cx="2" cy="-6" r="2" fill="#ffffff" />
+      <circle cx="-6" cy="3" r="2" fill="#ffffff" />
+    </g>
+
+    <!-- Dashed Line -->
+    <path d="M 150 345 L 362 345" stroke="#ffffff" stroke-width="4" stroke-dasharray="6 8" opacity="0.8" />
+  </g>
+
+  <!-- Typography -->
+  <text x="256" y="388" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-weight="900" font-size="29" letter-spacing="0.5">Loxone Icons</text>
+  <text x="256" y="424" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-weight="bold" font-size="20" letter-spacing="3">LOXBERRY</text>
+</svg>

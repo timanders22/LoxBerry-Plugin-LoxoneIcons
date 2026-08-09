@@ -1,0 +1,8 @@
+Diese Datei haelt den Ordner im Paket.
+
+Hier hinein laedt bin/download_icons.sh die Icons von der Loxone-Website und
+legt anschliessend loxone_icons.zip an. Im Paket ist der Ordner deshalb leer -
+mitgeliefert werden die Icons NICHT, sie gehoeren Loxone.
+
+Git fuehrt keine leeren Ordner; ohne eine Datei darin waere er nach einem
+Klonen verschwunden, und download_icons.sh haette kein Ziel.

@@ -1,0 +1,84 @@
+#!/bin/bash
+# LoxoneIcons - uninstall
+# command <TEMPFOLDER> <NAME> <FOLDER> <VERSION> <BASEFOLDER>
+#
+# Wird von LoxBerry als root ausgefuehrt. Rueckgabewert 0 = in Ordnung,
+# 1 = Warnung (die Deinstallation laeuft trotzdem weiter).
+#
+# ===================================================================
+# WARUM ES DIESE DATEI GIBT
+# ===================================================================
+#
+# LoxBerry raeumt die Plugin-Ordner weg. Drei Dinge blieben sonst liegen:
+#
+#   1. data/plugins/<ordner>.upgrade_sicherung
+#      Dorthin legt preupgrade.sh die bereits heruntergeladenen Symbole,
+#      damit ein Update nicht erneut mehrere Minuten und einiges an
+#      Datenverkehr auf den Loxone-Servern kostet. Der Ordner liegt
+#      absichtlich NEBEN dem Datenordner - beim Deinstallieren ist genau
+#      das falsch, und es sind je nach Bestand einige Megabyte.
+#   2. Ein noch laufender Download. download_icons.sh wird von der
+#      Oberflaeche abgekoppelt gestartet und laeuft weiter, auch wenn das
+#      Plugin verschwindet - und schreibt dann in Ordner, die es nicht
+#      mehr gibt.
+#   3. Die Sperrdatei download.running im Datenordner. Die geht zwar mit
+#      dem Datenordner, wird hier aber der Vollstaendigkeit halber vor dem
+#      Beenden geloescht, damit ein noch laufender Durchgang beim Aufraeumen
+#      nicht ins Leere greift.
+#
+# ZUR PROZESSSUCHE: Die Sperrdatei enthaelt die PID des laufenden
+# Durchgangs - die ist massgeblich. "pkill -f download_icons.sh" waere
+# falsch: das durchsucht die ganze Befehlszeile und traefe auch einen
+# Editor mit offener Datei. Fehlt die Sperrdatei, wird /proc
+# argumentweise durchgesehen und der volle Pfad verglichen.
+
+PDIR=$3
+[ -n "$PDIR" ] || PDIR="loxoneicons"
+BASE="${5:-$LBHOMEDIR}"
+[ -n "$BASE" ] && [ -d "$BASE" ] || BASE="/opt/loxberry"
+
+PDATA="$BASE/data/plugins/$PDIR"
+SKRIPT="$BASE/bin/plugins/$PDIR/download_icons.sh"
+LOCK="$PDATA/download.running"
+
+beenden() {
+    kill "$1" 2>/dev/null
+    for i in 1 2 3 4 5; do
+        kill -0 "$1" 2>/dev/null || return 0
+        sleep 1
+    done
+    kill -9 "$1" 2>/dev/null
+}
+
+GEFUNDEN=0
+if [ -f "$LOCK" ]; then
+    P=$(cat "$LOCK" 2>/dev/null)
+    if [ -n "$P" ] && kill -0 "$P" 2>/dev/null; then
+        beenden "$P"; GEFUNDEN=1
+        echo "<OK> Laufenden Download beendet (PID $P, aus der Sperrdatei)."
+    fi
+fi
+for D in /proc/[0-9]*; do
+    P=$(basename "$D")
+    [ -r "$D/cmdline" ] || continue
+    ERSTES=$(tr '\0' '\n' < "$D/cmdline" 2>/dev/null | head -1)
+    if [ "$ERSTES" = "$SKRIPT" ] && kill -0 "$P" 2>/dev/null; then
+        beenden "$P"; GEFUNDEN=1
+        echo "<OK> Weiteren Download beendet (PID $P)."
+    fi
+done
+[ "$GEFUNDEN" -eq 0 ] && echo "<INFO> Es lief kein Download."
+rm -f "$LOCK"
+
+if [ -d "$PDATA.upgrade_sicherung" ]; then
+    GROESSE=$(du -sh "$PDATA.upgrade_sicherung" 2>/dev/null | cut -f1)
+    rm -rf "$PDATA.upgrade_sicherung" \
+        && echo "<OK> Upgrade-Sicherung entfernt ($GROESSE)."
+else
+    echo "<INFO> Keine Upgrade-Sicherung vorhanden."
+fi
+
+echo "<INFO> Die heruntergeladenen Symbole gehen mit dem Datenordner des"
+echo "<INFO> Plugins. Wer sie behalten will, sichert sie VOR dem"
+echo "<INFO> Deinstallieren aus $PDATA."
+exit 0

@@ -1,0 +1,20 @@
+# Die heruntergeladenen Loxone-Icons gehoeren NICHT ins Paket.
+#
+# bin/download_icons.sh holt sie beim Installieren von der Loxone-Website
+# und baut daraus loxone_icons.zip. Die Icons sind Eigentum von Loxone; das
+# Plugin liefert sie nicht mit, es besorgt sie auf dem Zielsystem.
+data/loxone_icons/*
+!data/loxone_icons/.gitkeep
+
+# Entpackte Zweitfassungen der mitgelieferten Archive. Bis 2.0.0 lagen die
+# Bilder doppelt im Paket - einmal im ZIP, einmal daneben entpackt.
+data/weather_icons/png/
+data/weather_icons/svg/
+data/mixed_icons/svg/
+
+# Betriebssystem- und Editorreste
+.DS_Store
+Thumbs.db
+*~
+*.swp
+*.tmp

@@ -1,0 +1,163 @@
+<TMPL_IF FORM_DOWNLOAD>
+<center>
+	<table width="80%" border=0>
+		<tr>
+			<td>
+				<TMPL_VAR DOWNLOAD.HINT_1><br><br>
+				<b><TMPL_VAR DOWNLOAD.HINT_2>
+				<TMPL_VAR DOWNLOAD.HINT_3></b>
+			</td>
+		</tr>
+		<tr>
+			<td>
+				<br><hr><br>
+			</td>
+		</tr>
+		<tr>
+			<td>
+				<table data-role="table" class="ui-responsive" width="100%">
+					<thead>
+						<tr>
+							<th><TMPL_VAR DOWNLOAD.COL_ARCHIVE></th>
+							<th><TMPL_VAR DOWNLOAD.COL_SIZE></th>
+							<th><TMPL_VAR DOWNLOAD.COL_DATE></th>
+							<th>&nbsp;</th>
+						</tr>
+					</thead>
+					<tbody>
+						<TMPL_LOOP ARCHIVES>
+						<tr>
+							<td><TMPL_VAR NAME></td>
+							<TMPL_IF EXISTS>
+							<td><TMPL_VAR SIZE> MB</td>
+							<td><TMPL_VAR DATE></td>
+							<td>
+								<a href="<TMPL_VAR URL>" data-role="button" data-inline="true" data-icon="arrow-d" data-mini="true"><TMPL_VAR DOWNLOAD.BUTTON_DOWNLOAD></a>
+							</td>
+							<TMPL_ELSE>
+							<td colspan="3"><i><TMPL_VAR DOWNLOAD.NOT_YET></i></td>
+							</TMPL_IF>
+						</tr>
+						</TMPL_LOOP>
+					</tbody>
+				</table>
+			</td>
+		</tr>
+		<tr>
+			<td>
+				<br><hr><br>
+			</td>
+		</tr>
+		<tr>
+			<td>
+				<TMPL_VAR DOWNLOAD.HINT_REFRESH>
+				<br><br>
+				<div id="state"><TMPL_VAR DOWNLOAD.STATE_ICONS>: <b><TMPL_VAR ICONCOUNT></b></div>
+			</td>
+		</tr>
+		<tr>
+			<td align=center>
+				<table width="50%" border=0>
+					<tr>
+						<td align=center>
+							<a href="javascript:refresh(0);" id="btnrefresh" data-role="button" data-inline="false" data-icon="refresh" data-mini="true"
+								data-transition="flow"><TMPL_VAR DOWNLOAD.BUTTON_REFRESH></a>
+						</td>
+						<td>
+							&nbsp;
+						</td>
+						<td align=center>
+							<a href="javascript:refresh(1);" id="btnforce" data-role="button" data-inline="false" data-icon="recycle" data-mini="true"
+								data-transition="flow"><TMPL_VAR DOWNLOAD.BUTTON_FORCE></a>
+						</td>
+					</tr>
+				</table>
+			</td>
+		</tr>
+	</table>
+</center>
+
+<script>
+var running = <TMPL_VAR RUNNING>;
+
+// Texts come from the language file so this stays translatable.
+var t_running  = "<TMPL_VAR DOWNLOAD.STATE_RUNNING>";
+var t_done     = "<TMPL_VAR DOWNLOAD.STATE_DONE>";
+var t_icons    = "<TMPL_VAR DOWNLOAD.STATE_ICONS>";
+var t_failed   = "<TMPL_VAR DOWNLOAD.STATE_FAILED>";
+
+function refresh(force) {
+	console.log ("Refreshing icons, force=" + force);
+	$("[id^=btn]").addClass('ui-disabled');
+	$("#state").html(t_running);
+	$.ajax( {
+			type: 'POST',
+			data: {
+				ajax: 'refresh',
+				force: force
+			}
+		} )
+	.fail(function( data ) {
+		console.log( "Refresh Fail", data );
+		$("#btnrefresh").attr("style", "background-color: #FF3E3E; color: white;text-shadow: none");
+		$("#state").html(t_failed);
+		$("[id^=btn]").removeClass('ui-disabled');
+	})
+	.done(function( data ) {
+		console.log( "Refresh Success: ", data );
+		if(data.error) {
+			$("#btnrefresh").attr("style", "background-color: #FF3E3E; color: white;text-shadow: none");
+			$("#state").html(t_failed);
+			$("[id^=btn]").removeClass('ui-disabled');
+		} else {
+			// The download runs detached and takes a minute or two, so we
+			// keep asking instead of waiting for the request to return.
+			running = 1;
+			setTimeout(poll, 3000);
+		}
+	})
+}
+
+function poll() {
+	$.ajax( {
+			type: 'POST',
+			dataType: 'json',
+			data: {
+				ajax: 'status'
+			}
+		} )
+	.done(function( data ) {
+		if(data.running) {
+			$("#state").html(t_running + " &ndash; " + t_icons + ": <b>" + data.icons + "</b>");
+			setTimeout(poll, 3000);
+		} else {
+			$("#state").html(t_done + " &ndash; " + t_icons + ": <b>" + data.icons + "</b>");
+			$("#btnrefresh").attr("style", "background-color: #83C43B; color: white;text-shadow: none");
+			$("[id^=btn]").removeClass('ui-disabled');
+			// Reload so the table shows the new size and date.
+			setTimeout(function() { location.reload(); }, 2000);
+		}
+	})
+	.fail(function( data ) {
+		$("#state").html(t_failed);
+		$("[id^=btn]").removeClass('ui-disabled');
+	})
+}
+
+// A download started before this page was opened is picked up as well.
+$(document).ready(function() {
+	if (running) {
+		$("[id^=btn]").addClass('ui-disabled');
+		$("#state").html(t_running);
+		setTimeout(poll, 3000);
+	}
+});
+</script>
+</TMPL_IF>
+
+
+
+
+<TMPL_IF FORM_LOG>
+	<TMPL_VAR LOGLIST>
+</TMPL_IF>

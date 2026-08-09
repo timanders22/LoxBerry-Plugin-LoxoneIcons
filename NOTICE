@@ -1,0 +1,76 @@
+LoxoneIcons - LoxBerry-Plugin
+=============================
+
+Dieses Werk steht unter der Apache License 2.0 (siehe LICENSE).
+
+
+Urspruengliches Werk
+--------------------
+LoxBerry-Plugin-LoxoneIcons
+Copyright 2023 Michael Schlenstedt, michael@loxberry.de
+https://github.com/mschlenstedt/LoxBerry-Plugin-LoxoneIcons
+Lizenziert unter der Apache License, Version 2.0
+
+Die Copyright-Vermerke stehen unveraendert in den uebernommenen Dateien
+(bin/download_icons.sh, webfrontend/htmlauth/index.cgi).
+
+
+Zu den Symbolen selbst
+----------------------
+Die Loxone-Symbole gehoeren Loxone. Dieses Plugin liefert sie NICHT mit -
+bin/download_icons.sh holt sie zur Laufzeit von den Loxone-Servern ab. Was im
+Paket liegt, sind ausschliesslich die beiden Zusatzsammlungen
+(data/mixed_icons, data/weather_icons) aus dem urspruenglichen Werk.
+
+Loxone ist eine Marke der Loxone Electronics GmbH. Dieses Plugin steht in
+keiner Verbindung zu diesem Unternehmen und wird von ihm weder herausgegeben
+noch unterstuetzt.
+
+
+Aenderungen gegenueber dem Original (Apache License 2.0, Abschnitt 4 b)
+-----------------------------------------------------------------------
+
+2.0.0  Der mitgelieferte Dateimanager elFinder ist entfallen - rund 250
+       Dateien, darunter eine vollstaendige PHP-Bibliothek mit Anbindungen an
+       Dropbox, Google Drive, OneDrive, Box, FTP, SFTP und MySQL. Gebraucht
+       wurde davon nichts; das Plugin holt Symbole ab und legt sie ab.
+
+       Eigene Kennung: [AUTHOR] traegt eine Projektkennung statt des
+       Originalautors. LoxBerry bildet daraus zusammen mit [PLUGIN] NAME die
+       Kennzahl, unter der es Installation und Updates fuehrt - es ist kein
+       Urhebervermerk. Der steht hier, im README und in den Kopfzeilen der
+       uebernommenen Dateien.
+
+       NAME und FOLDER bleiben "loxoneicons". Das Plugin fasst nichts an, was
+       ausserhalb seines eigenen Verzeichnisses liegt: alle Pfade leiten sich
+       aus dem Ordner ab (data/, log/, bin/ unter plugins/<Ordner>), es gibt
+       keinen Systemdienst, keine Regeldatei, keinen festen Port und keinen
+       Endpunkt fuer Loxone. Ein eigener Ordnername braechte hier nichts, was
+       die Kennung nicht schon leistet.
+
+2.0.1  Jedes Bild lag doppelt im Paket - einmal einzeln, einmal im ZIP-Archiv
+       daneben. Entfernt wurde die jeweils ungenutzte Fassung.
+
+       uninstall/uninstall angelegt: es beendet einen noch laufenden Download
+       ueber die PID aus der Sperrdatei (nicht ueber "pkill -f", das traefe
+       auch einen Editor mit offener Datei) und raeumt die Upgrade-Sicherung
+       weg, die sonst neben dem Datenordner liegen bliebe.
+
+       ARCHITECTURE stand mit Anfuehrungszeichen im Wert, LB_MINIMUM auf
+       2.2.0, obwohl libs/bashlib/loxberry_log.sh benutzt wird - das traegt
+       erst ab LoxBerry 3.
+
+2.0.2  Auto-Update auf das eigene Repository gerichtet und eingeschaltet.
+
+       Bis 2.0.0 zeigten die Adressen auf das Repository des Originalautors.
+       Das ist bei einer eigenstaendig weitergefuehrten Fassung eine Falle:
+       LoxBerry vergleicht Fassungen als ZAHL und laedt jede hoehere Nummer
+       nach - eine dort veroeffentlichte 2.0.1 oder gar eine Datumsnummer wie
+       2021.05.14 haette diese Fassung stillschweigend ersetzt. In 2.0.1 war
+       die Selbstaktualisierung deshalb vorsorglich abgeschaltet, solange es
+       kein eigenes Repository gab. Jetzt gibt es eines.
+
+       LICENSE und NOTICE nachgereicht: das Original fuehrte am Wurzelpunkt
+       keine Lizenzdatei, obwohl die Quelldateien Apache-Kopfzeilen tragen.
+       Abschnitt 4 a der Lizenz verlangt, dass Empfaenger eine Kopie
+       erhalten.
