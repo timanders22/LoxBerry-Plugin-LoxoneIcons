@@ -53,7 +53,7 @@ buttons:
 The same job can be run from the command line:
 
 ```
-/opt/loxberry/bin/plugins/loxoneicons/download_icons.sh [--force]
+<LoxBerry-Wurzel>/bin/plugins/loxoneicons/download_icons.sh [--force]
 ```
 
 The list of icons is hard-coded in that script. When Loxone publishes new
