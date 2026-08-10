@@ -159,7 +159,10 @@ sub form_print
 	$navbar{99}{active} = 1 if $q->{form} eq "log";
 
 	# Template
-	LoxBerry::Web::lbheader($L{'COMMON.LABEL_PLUGINTITLE'} . " V$version", "https://wiki.loxberry.de/plugins/loxoneicons/start", "");
+	# Der dritte Parameter war leer - damit gab es keinen Hilfetext, obwohl
+	# der Hilfeknopf da war. Jetzt 'help.html' mit den Texten in
+	# templates/lang/help_de.ini und help_en.ini.
+	LoxBerry::Web::lbheader($L{'COMMON.LABEL_PLUGINTITLE'} . " V$version", "https://wiki.loxberry.de/plugins/loxoneicons/start", "help.html");
 	print $template->output();
 	LoxBerry::Web::lbfooter();
 
