@@ -38,9 +38,16 @@ BASE="${5:-$LBHOMEDIR}"
 # Dritter Rueckfall: der eigene Ablageort. Bewusst kein fest verdrahteter
 # Systempfad - LoxBerry laesst sich anderswohin installieren, und der
 # Plugin-Pruefer sucht die Zeichenkette, ohne den Zusammenhang zu sehen.
-# Dieses Skript liegt unter <home>/data/plugins/<ordner>/uninstall/
+# LoxBerry legt dieses Skript als <home>/data/system/uninstall/<name> ab
+# (plugininstall.pl, "Copy Uninstall file"). Bis 2.0.4 stand hier
+# data/plugins/<ordner>/uninstall/ und es wurden vier Ebenen hochgegangen -
+# das landete eine Ebene UEBER der LoxBerry-Wurzel. Richtig sind drei.
 if [ -z "$BASE" ] || [ ! -d "$BASE" ]; then
-    BASE=$(cd "$(dirname "$(readlink -f "$0")")/../../../.." 2>/dev/null && pwd)
+    BASE=$(cd "$(dirname "$(readlink -f "$0")")/../../.." 2>/dev/null && pwd)
+    if [ ! -d "$BASE/data/plugins" ]; then
+        echo "<WARNING> Die LoxBerry-Wurzel liess sich nicht ermitteln - es wird nichts aufgeraeumt."
+        exit 1
+    fi
 fi
 
 PDATA="$BASE/data/plugins/$PDIR"
@@ -82,6 +89,15 @@ if [ -d "$PDATA.upgrade_sicherung" ]; then
         && echo "<OK> Upgrade-Sicherung entfernt ($GROESSE)."
 else
     echo "<INFO> Keine Upgrade-Sicherung vorhanden."
+fi
+
+# Seit 2.0.5 fuehrt die Oberflaeche eine Zweitschrift der Konfiguration NEBEN
+# dem Konfigurationsordner (config/plugins/<ordner>.backup.json), damit das
+# Aktionstoken ein Upgrade uebersteht. Beim Deinstallieren gehoert sie weg;
+# sie traegt das Token.
+ZWEIT="$BASE/config/plugins/$PDIR.backup.json"
+if [ -f "$ZWEIT" ]; then
+    rm -f "$ZWEIT" "$ZWEIT".tmp.* && echo "<OK> Zweitschrift der Konfiguration entfernt."
 fi
 
 echo "<INFO> Die heruntergeladenen Symbole gehen mit dem Datenordner des"

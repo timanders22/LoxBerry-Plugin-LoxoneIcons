@@ -1,64 +1,79 @@
-# LoxBerry-Plugin-LoxoneIcons
+# LoxoneIcons NG — LoxBerry-Plugin
 
-LoxBerry plugin which downloads the icons of the Loxone Touch Pure Flex
-configurator and offers them as a ZIP archive.
+Holt die Symbole des Loxone-Konfigurators für den Touch Pure Flex von der
+öffentlichen Loxone-Seite und stellt sie auf dem LoxBerry als Archiv zum
+Herunterladen bereit.
 
-## What it does
+LoxoneIcons NG ist eine eigenständig weitergeführte Abspaltung von
+[LoxBerry-Plugin-LoxoneIcons](https://github.com/mschlenstedt/LoxBerry-Plugin-LoxoneIcons)
+(Michael Schlenstedt). Seit 2.0.5 trägt sie den Titel „NG“, weil Oberfläche
+und Verhalten vom Original abweichen. Die interne Kennung bleibt `loxoneicons`
+— bestehende Installationen werden wie bisher aktualisiert.
 
-* Downloads all icons from the public Loxone website
-  (`configurator.loxone.com`), both the filled and the outlined variant.
-* Converts every icon to a 96×96 PNG in white, ready for use on a Touch
-  Pure Flex.
-* Packs everything into `loxone_icons.zip`.
-* Ships a set of weather icons (SVG and PNG in seven colour variants) and
-  a handful of mixed icons (waste bins, lawn mower, vacuum robot, …).
+## Was das Plugin tut
 
-Download the archives on the plugin's web page and use the icons in your
-Loxone projects.
+* Es lädt alle Symbole von `configurator.loxone.com`, gefüllt und umrissen,
+  als SVG.
+* Es wandelt jedes Symbol in ein PNG mit 96 × 96 Pixeln in Weiß um.
+* Es packt alles in `loxone_icons.zip`.
+* Es liefert zwei Sammlungen aus dem ursprünglichen Werk mit: 21 Wettersymbole
+  (SVG, dazu PNG in sieben Farbvarianten) und zehn gemischte Symbole
+  (Mülltonnen, Rasenroboter, Saugroboter, Pool).
 
-## What it no longer does
+Das Plugin liefert keine Werte an den Miniserver und verändert weder die
+Projektdatei noch den Miniserver.
 
-Up to version 1.0.1 the plugin also built a complete `IconLibrary.zip`,
-using the [loxicon](https://github.com/strobejb/loxicon/) script by James
-Brown, and uploaded it to the Miniserver over FTP. **This stopped working
-with Loxone Config V17** and was removed in version 2.0.0 together with
-everything that only existed to support it: the elFinder file manager, the
-Python dependency and the FTP transfer to the Miniserver.
+## Was es nicht mehr tut
 
-If you need that functionality, use version 1.0.1 with Loxone Config V16
-or older.
+Bis Fassung 1.0.1 baute das Plugin zusätzlich eine vollständige
+`IconLibrary.zip` mit dem Skript [loxicon](https://github.com/strobejb/loxicon/)
+von James Brown und spielte sie per FTP auf den Miniserver. Nach der
+Beschreibung von Fassung 2.0.0 trägt dieser Weg ab Loxone Config 17 nicht mehr;
+er wurde samt Dateimanager, Python-Abhängigkeit und FTP-Übertragung entfernt.
 
-## Requirements
+## Voraussetzungen
 
-* LoxBerry 2.2.0 or newer
-* `librsvg2-bin` (for `rsvg-convert`) and `p7zip-full` — both are
-  installed automatically
+* LoxBerry 3.0.0 oder neuer (`libs/bashlib/loxberry_log.sh`)
+* `librsvg2-bin` (für `rsvg-convert`) und `p7zip-full` — beide installiert
+  LoxBerry mit dem Plugin
+* Internetzugang des LoxBerry
 
-## Notes on the icons
+## Oberfläche
 
-All Loxone icons are © Loxone. No icon is bundled with this plugin; they
-are downloaded from Loxone's public website during installation. Use them
-in your Loxone projects, but respect the copyright and do not use them
-anywhere else.
+| Reiter | Inhalt |
+|---|---|
+| Einstellungen | die drei Archive mit Größe und Stand, Abruf starten („Fehlendes nachladen“ oder „Alles löschen und neu laden“ mit Bestätigungshaken), Einstellungen sichern und zurückspielen |
+| Einbindung in Loxone | was in den Archiven liegt, und was dieses Plugin in Loxone Config nicht tut |
+| Test | Selbstprüfung: Reiter und Formulare, Konfiguration und Zweitschrift, Abrufskript und Programme, Symbolzahl gegen die Liste, Ergebnis des letzten Laufs, Reste abgebrochener Abrufe, Archiv, Erreichbarkeit der Loxone-Seite |
+| Logdateien | die Protokolle des Plugins |
 
-## Refreshing the icon set
+Jedes Formular trägt ein Merkmal gegen fremde Absender; es wird aus einem
+Aktionstoken abgeleitet, das beim ersten Aufruf entsteht und neben dem
+Konfigurationsordner eine Zweitschrift hat.
 
-Loxone adds new icons from time to time. The plugin's web page has two
-buttons:
+## Den Symbolsatz erneuern
 
-* **Refresh icons** — only fetches what is missing. Takes seconds.
-* **Download everything again** — throws the current set away and starts
-  over. Takes about 90 seconds on a Raspberry Pi 4.
-
-The same job can be run from the command line:
+Von der Kommandozeile geht dasselbe wie mit den Knöpfen:
 
 ```
 <LoxBerry-Wurzel>/bin/plugins/loxoneicons/download_icons.sh [--force]
 ```
 
-The list of icons is hard-coded in that script. When Loxone publishes new
-ones, refresh it with the command given in the comment at the top of the
-icon list.
+Ohne `--force` wird nur geholt, was fehlt oder unvollständig ist. Das Ergebnis
+jedes Laufs steht in `data/plugins/loxoneicons/letzter_lauf.json`; der Reiter
+Test liest es.
+
+Die Symbolliste steht im Skript. Sie lässt sich nicht mehr automatisch
+erneuern: Die Verzeichnisseite bei Loxone antwortet seit spätestens September
+2026 mit „403 Forbidden“, während die einzelnen Dateien weiter ausgeliefert
+werden. Neue Symbole müssen mit Namen in die Liste. Sieben Symbole (`awning-*`)
+gibt es bei Loxone nur gefüllt, nicht umrissen.
+
+## Urheberrecht der Symbole
+
+Alle Loxone-Symbole sind © Loxone. Keines liegt im Paket; sie werden auf dem
+LoxBerry von der öffentlichen Loxone-Seite geholt. Ihre Verwendung richtet sich
+nach den Bedingungen von Loxone.
 
 ## Fassung 2.0.1 — Prüfbericht und Härtung
 
@@ -241,6 +256,50 @@ braucht keinen:
   würde nur einen bestehenden Bestand zur Neuinstallation zwingen.
 
 `NAME` und `FOLDER` bleiben deshalb `loxoneicons`.
+
+## Fassung 2.0.5 — LoxoneIcons NG: Hausstandard, abgebrochene Downloads
+
+- **Titel „LoxoneIcons NG“.** Der Abschnitt zu 2.0.2 oben begründet, warum
+  kein neuer *Plugin-Name* nötig ist — das gilt weiter: `NAME`, `FOLDER` und
+  die Kennung unter `[AUTHOR]` bleiben. Geändert ist nur der angezeigte Titel
+  (`TITLE`), damit die Abspaltung in der Plugin-Verwaltung vom Original zu
+  unterscheiden ist.
+- **Neue Oberfläche in PHP statt Perl.** `index.cgi` und
+  `templates/settings.html` sind ersetzt durch `index.php` und `li_lib.php`:
+  vier Reiter (Einstellungen, Einbindung in Loxone, Test, Logdateien),
+  Formularmerkmal gegen fremde Absender, Einstellungen sichern und
+  zurückspielen, Selbstprüfung. Nach dem Quelltext von `index.cgi` 2.0.4
+  (gelesen, nicht am Gerät ausgelöst) genügte dort eine Anfrage mit
+  `ajax=refresh&force=1` ohne jedes Merkmal, um den ganzen Symbolsatz zu
+  löschen und neu zu laden — auch von einer fremden Seite im Browser eines
+  angemeldeten Bedieners. Jetzt
+  weist der Wachposten solche Anfragen ab, und „Alles löschen“ verlangt
+  zusätzlich einen Haken.
+- **Ergebnis jedes Laufs** in `letzter_lauf.json` (Zeitpunkt, Rückgabewert,
+  Zahl der vollständigen Dateien, fehlende Symbole mit Namen).
+- **Hilfetext berichtigt:** „das Format, das der Touch Pure Flex erwartet“
+  und „das Protokoll nennt die Adresse“ waren nicht belegt bzw. falsch.
+
+- **Eine leere oder abgeschnittene SVG-Datei blieb für immer liegen.**
+  `download_icons.sh` rief `wget -P` auf, und `wget -P` überschreibt keine
+  vorhandene Datei: der neue Abruf landete als `8-ball.svg.1` daneben, beim
+  nächsten Lauf als `.svg.2`, und diese Dateien gingen mit ins ZIP-Archiv.
+  Eine abgeschnittene Datei galt außerdem als vorhanden, weil nur „größer als
+  null" geprüft wurde. Am LoxBerry nachgestellt (wget 1.25.0): 2.0.4 ließ beide
+  Schäden stehen und legte zwei Zusatzdateien ins Archiv, 2.0.5 stellt beide
+  Dateien byte-gleich wieder her.
+  Jetzt gilt eine SVG-Datei nur als vorhanden, wenn sie mit `</svg>` endet;
+  jeder Abruf schreibt zuerst nach `<name>.teil` und benennt erst bei Erfolg
+  um; Reste der alten Form (`*.svg.1`, `*.svg.2` …) werden entfernt und das
+  Archiv neu gebaut.
+- **Deinstallation: der Rückfallpfad zeigte eine Ebene zu hoch.** LoxBerry legt
+  das Skript unter `data/system/uninstall/` ab, nicht unter
+  `data/plugins/<Ordner>/uninstall/`. Der Rückfall greift nur, wenn LoxBerry
+  kein Basisverzeichnis übergibt — dann fand er die Upgrade-Sicherung nicht.
+- **Die Liste der Symbole lässt sich nicht mehr automatisch erneuern.** Die
+  Verzeichnisseite bei Loxone antwortet mit 403; der Hinweis darauf ist
+  berichtigt. Sieben Symbole (`awning-*`) gibt es bei Loxone nur gefüllt, nicht
+  umrissen — die Warnungen dazu sind erwartet.
 
 ## Herkunft und Lizenz
 

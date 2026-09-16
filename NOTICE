@@ -74,3 +74,24 @@ Aenderungen gegenueber dem Original (Apache License 2.0, Abschnitt 4 b)
        keine Lizenzdatei, obwohl die Quelldateien Apache-Kopfzeilen tragen.
        Abschnitt 4 a der Lizenz verlangt, dass Empfaenger eine Kopie
        erhalten.
+
+2.0.4  (hier nachgetragen) Hilfetext aus help.html in help_de.ini und
+       help_en.ini verlegt; uninstall/uninstall ohne fest verdrahteten
+       Systempfad.
+
+2.0.5  download_icons.sh: eine leere oder abgeschnittene SVG-Datei wurde nie
+       ersetzt - "wget -P" ueberschreibt nicht, der neue Abruf landete als
+       *.svg.1 daneben und ging mit ins ZIP-Archiv. Jetzt gilt eine Datei
+       nur mit </svg> am Ende als vorhanden, jeder Abruf geht ueber
+       <name>.teil, alte Reste werden entfernt.
+
+       uninstall/uninstall: der Rueckfallpfad ging vier statt drei Ebenen
+       hoch; LoxBerry legt das Skript unter data/system/uninstall/ ab.
+       Zusaetzlich wird die Zweitschrift der Konfiguration entfernt.
+
+       Titel "LoxoneIcons NG". Oberflaeche neu in PHP (index.php,
+       li_lib.php) statt webfrontend/htmlauth/index.cgi und
+       templates/settings.html: Reiter Einstellungen, Einbindung in Loxone,
+       Test und Logdateien; Formularmerkmal gegen fremde Absender;
+       Einstellungen sichern und zurueckspielen. download_icons.sh schreibt
+       das Ergebnis jedes Laufs nach letzter_lauf.json. README auf Deutsch.

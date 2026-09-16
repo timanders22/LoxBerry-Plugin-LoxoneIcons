@@ -91,7 +91,37 @@ if [ -e "$LOCK" ]; then
 fi
 echo $$ > "$LOCK"
 
+# An SVG counts as present only if it is complete. Up to 2.0.4 any file
+# larger than zero counted - but a download interrupted half way leaves a
+# truncated file behind, and that one was kept for good. Every icon of the
+# Loxone set ends with </svg> (measured 2026-09-17: 1095 of 1095).
+vorhanden() {
+    [ -s "$1" ] && grep -q '</svg>' "$1"
+}
+
+# The result of every run goes to letzter_lauf.json in the data folder. The
+# web interface reads it in its "Test" tab - which icons are missing, whether
+# the last run ended cleanly - without going to the internet itself.
+# The icon names contain only a-z, 0-9, "-" and ".", so they need no escaping.
+schreibe_stand() {
+    local rc=$1 n=0 fehl="" i
+    for i in "${icons[@]}"; do
+        if vorhanden "$SVGFILLED/$i"; then n=$((n+1)); else fehl="$fehl\"filled/$i\","; fi
+        if vorhanden "$SVGOUTLINED/$i"; then n=$((n+1)); else fehl="$fehl\"outlined/$i\","; fi
+    done
+    printf '{"ende":%s,"rc":%s,"soll":%s,"vorhanden":%s,"fehlend":[%s]}\n' \
+        "$(date +%s)" "$rc" "$(( ${#icons[@]} * 2 ))" "$n" "${fehl%,}" \
+        > "$PDATA/letzter_lauf.json.teil" \
+        && mv -f "$PDATA/letzter_lauf.json.teil" "$PDATA/letzter_lauf.json"
+}
+
+# The result is written BEFORE the lock goes. Counting takes about four
+# seconds on a Raspberry Pi 4 (measured 2026-09-17); with the lock removed
+# first, the web interface saw "not running" in that gap, reloaded and showed
+# the result of the previous run.
 cleanup() {
+    rc=$?
+    schreibe_stand "$rc"
     rm -f "$LOCK"
     LOGEND "Bye."
 }
@@ -106,10 +136,14 @@ fi
 ##########################################################################
 # The icons offered by Loxone
 #
-# Refresh this list with:
-#   wget -O - https://configurator.loxone.com/files/translations/IconsFilled/ \
-#     | grep -io '<a href=['"'"'"][^"'"'"']*['"'"'"]' \
-#     | sed -e 's/^<a href=["'"'"']//i' -e 's/["'"'"']$//i' | grep 'svg'
+# Up to 2.0.4 this said the list could be refreshed from the directory
+# listing of .../translations/IconsFilled/. That no longer works: the
+# listing answers "403 Forbidden" (measured 2026-09-17), while the single
+# files are still served. The list below can therefore only be checked
+# icon by icon, not refreshed from Loxone.
+#
+# Seven icons exist only filled, not outlined (awning-*); Loxone answers
+# 404 for their outlined form. The warnings about them are expected.
 ##########################################################################
 
 icons=(
@@ -678,24 +712,44 @@ mkdir -p "$SVGFILLED" "$SVGOUTLINED" "$PNGFILLED" "$PNGOUTLINED"
 
 CHANGED=0
 
-# Collect what is missing. Files of size zero count as missing - that is
-# what a download interrupted half way leaves behind.
+# Leftovers of 2.0.4 and older. There wget ran with -P, and with -P it does
+# NOT overwrite an existing file: an empty or truncated 8-ball.svg stayed,
+# and the new download went to 8-ball.svg.1 - on every run another one
+# (measured on the LoxBerry with wget 1.25.0). Those files ended up in the
+# ZIP archive. Unfinished downloads of this version end in .teil.
+REST=$(find "$SVGFILLED" "$SVGOUTLINED" -maxdepth 1 -type f \( -name '*.svg.[0-9]*' -o -name '*.teil' \) 2>/dev/null | wc -l)
+if [ "$REST" -gt 0 ]; then
+    LOGINF "Removing $REST leftover files of earlier downloads."
+    find "$SVGFILLED" "$SVGOUTLINED" -maxdepth 1 -type f \( -name '*.svg.[0-9]*' -o -name '*.teil' \) -delete
+    CHANGED=1
+fi
+
+# Collect what is missing. An SVG that is fetched again also loses its
+# PNG, which was made from the broken file.
 URLLIST=$(mktemp)
 for i in "${icons[@]}"; do
-    if [ ! -s "$SVGFILLED/$i" ]; then
+    base=$(basename "$i" .svg)
+    if ! vorhanden "$SVGFILLED/$i"; then
         echo "$URLFILLED/$i $SVGFILLED" >> "$URLLIST"
+        rm -f "$PNGFILLED/$base.png"
     fi
-    if [ ! -s "$SVGOUTLINED/$i" ]; then
+    if ! vorhanden "$SVGOUTLINED/$i"; then
         echo "$URLOUTLINED/$i $SVGOUTLINED" >> "$URLLIST"
+        rm -f "$PNGOUTLINED/$base.png"
     fi
 done
 
-# How many SVGs do we have right now? If an icon has been removed from
-# the Loxone website for good, it stays on the missing list forever. Only
-# counting the files afterwards tells us whether anything really arrived -
+# How many complete SVGs do we have right now? If an icon has been removed
+# from the Loxone website for good, it stays on the missing list forever.
+# Only counting afterwards tells us whether anything really arrived -
 # otherwise every single run would rebuild the ZIP archive for nothing.
 zaehle_svg() {
-    find "$SVGFILLED" "$SVGOUTLINED" -name '*.svg' -size +0 2>/dev/null | wc -l
+    n=0
+    for i in "${icons[@]}"; do
+        vorhanden "$SVGFILLED/$i" && n=$((n+1))
+        vorhanden "$SVGOUTLINED/$i" && n=$((n+1))
+    done
+    echo $n
 }
 
 TODO=$(wc -l < "$URLLIST")
@@ -704,7 +758,10 @@ if [ "$TODO" -gt 0 ]; then
     LOGINF "Downloading $TODO icons from the Loxone website. The full set takes about 90 seconds on a Raspberry Pi 4."
     # Four downloads in parallel. The full set is 1102 requests and took
     # 89 seconds on a Raspberry Pi 4 that way.
-    xargs -P 4 -n 2 -a "$URLLIST" sh -c 'wget -q --timeout=15 --tries=2 -P "$2" "$1"' sh
+    # Each file goes to <name>.teil first and is renamed only when wget
+    # reports success and the file is not empty. -O overwrites; on a 404
+    # wget leaves an empty file, which is removed.
+    xargs -P 4 -n 2 -a "$URLLIST" sh -c 'z="$2/${1##*/}"; if wget -q --timeout=15 --tries=2 -O "$z.teil" "$1" && [ -s "$z.teil" ]; then mv -f "$z.teil" "$z"; else rm -f "$z.teil"; fi' sh
     NACHHER=$(zaehle_svg)
     if [ "$NACHHER" -gt "$VORHER" ]; then
         LOGOK "$(( NACHHER - VORHER )) new icons downloaded."
@@ -718,11 +775,11 @@ rm -f "$URLLIST"
 # Report what did not arrive instead of failing silently.
 MISSING=0
 for i in "${icons[@]}"; do
-    if [ ! -s "$SVGFILLED/$i" ]; then
+    if ! vorhanden "$SVGFILLED/$i"; then
         LOGWARN "Not available (filled): $i"
         MISSING=$((MISSING+1))
     fi
-    if [ ! -s "$SVGOUTLINED/$i" ]; then
+    if ! vorhanden "$SVGOUTLINED/$i"; then
         LOGWARN "Not available (outlined): $i"
         MISSING=$((MISSING+1))
     fi
@@ -737,13 +794,13 @@ fi
 
 for i in "${icons[@]}"; do
     base=$(basename "$i" .svg)
-    if [ -s "$SVGFILLED/$i" ] && [ ! -s "$PNGFILLED/$base.png" ]; then
+    if vorhanden "$SVGFILLED/$i" && [ ! -s "$PNGFILLED/$base.png" ]; then
         LOGINF "Converting $i to PNG (filled)."
         sed -E 's/<path/<path fill="#FFFFFF"/g' "$SVGFILLED/$i" \
             | rsvg-convert -f png -w 96 -h 96 /dev/stdin > "$PNGFILLED/$base.png"
         CHANGED=1
     fi
-    if [ -s "$SVGOUTLINED/$i" ] && [ ! -s "$PNGOUTLINED/$base.png" ]; then
+    if vorhanden "$SVGOUTLINED/$i" && [ ! -s "$PNGOUTLINED/$base.png" ]; then
         LOGINF "Converting $i to PNG (outlined)."
         sed -E 's/black/white/g' "$SVGOUTLINED/$i" \
             | rsvg-convert -f png -w 96 -h 96 /dev/stdin > "$PNGOUTLINED/$base.png"
