@@ -130,7 +130,12 @@ list($li_listenzahl, $li_probe_url) = li_symbolliste();
 if ($li_rahmen) {
     $li_titel = li_t('ALLGEMEIN.TITEL');
     if (class_exists('LBSystem', false) && method_exists('LBSystem', 'pluginversion')) {
-        $li_fassung = (string) LBSystem::pluginversion();
+        /* Ueber den Ordnernamen fragen (Regeln/03): ohne Argument haengt die
+         * Antwort am ersten eingebundenen Skript - am Geraet gemessen
+         * 17.09.2026: aus einem fremden Einstieg (php -r) NULL, mit dem
+         * Ordnernamen die installierte Fassung. Installiert liegt diese Datei
+         * unter webfrontend/html(auth)/plugins/<ordner>/. */
+        $li_fassung = (string) LBSystem::pluginversion(basename(__DIR__));
         if ($li_fassung !== '') {
             $li_titel .= ' V' . $li_fassung;
         }
