@@ -352,6 +352,64 @@ liegen unter `Pruefung-LoxoneIcons-2.0.7/`. Ins Netz ging dabei nichts.
 Die Sperrdatei wird beim Deinstallieren in jedem Fall entfernt, auch eine
 veraltete.
 
+## Fassung 2.0.8 — die Sicherung überlebt ein abgebrochenes Update
+
+Anlass ist die Bestandsmessung vom 18.09.2026 (`Bestand-2026-09-18`, Klassen
+D und H). Gemessen wurde in WSL Ubuntu an einem nachgebauten LoxBerry-Baum,
+18 Fälle, vorher 9 rot, nachher 0; jede Korrektur wurde einzeln
+zurückgebaut und macht genau ihren Fall wieder rot. Prüfstand, Protokolle und
+Eichung liegen unter `Pruefung-LoxoneIcons-2.0.8/`. Ins Netz ging nichts:
+`wget` war in jedem Fall eine Attrappe.
+
+- **Ein zweiter Update-Versuch löschte die Sicherung.** `preupgrade.sh`
+  begann mit `rm -rf` auf die Sicherung neben dem Datenordner. Beim Update
+  löscht LoxBerry aber den Datenordner selbst (`purge_installation`); bricht
+  das Update danach ab und wird erneut angestoßen, ist die Sicherung die
+  einzige Abschrift des Iconsatzes — und der zweite Lauf warf sie weg.
+  Gemessen: 0 von 5 Probedateien übrig, gleich ob der Datenordner fehlte oder
+  der Installer schon `loxone_icons/.gitkeep` aus dem Archiv kopiert hatte.
+  Jetzt zählt das Skript die vollständigen Symbole des laufenden Satzes; trägt
+  er keine, bleibt die Sicherung, wie sie ist (mit einer Warnung). Sonst
+  entsteht die neue Sicherung neben der alten, wird gezählt und tauscht erst
+  dann per Umbenennen den Platz. Scheitert das Sichern, bleibt die alte
+  unangetastet (nachgestellt mit schreibgeschütztem Datenordner und
+  `ulimit -f 0` an Stelle einer vollen Karte: vorher 0 von 2, nachher 2 von 2).
+
+- **`postupgrade.sh` löschte die Sicherung auch nach gescheitertem
+  Zurückstellen.** Das `rm -rf` stand unbedingt hinter dem Block. Gemessen
+  mit schreibgeschütztem Datenordner: Sicherung weg, Datenordner leer, keine
+  Zeile im Protokoll. Jetzt fällt die Sicherung nur, wenn im Datenordner
+  mindestens so viele vollständige Symbole liegen wie in ihr; sonst bleibt
+  sie mit einer `<WARNING>` liegen.
+
+- **`download_icons.sh` riet die LoxBerry-Wurzel.** Es rechnete sie aus dem
+  eigenen Ablageort (drei Ebenen hoch) und überschrieb dabei ein gesetztes
+  `$LBHOMEDIR`; der Ordnername kam ebenfalls aus dem Ablageort. Aus einem
+  Prüfarchiv unter `<LoxBerry-Wurzel>/pruefung/loxoneicons/bin/` gestartet,
+  legte es in der laufenden Anlage `data/plugins/bin` und `log/plugins/bin`
+  an. Jetzt gilt `$LBHOMEDIR`, sonst wird aufwärts nach
+  `config/system/general.json` gesucht, und geschrieben wird nur, wenn das
+  Skript wirklich unter `<Wurzel>/bin/plugins/<ordner>/` liegt.
+
+- **Die Wurzelsuche in `uninstall` und in der Oberfläche prüfte nur
+  `data/plugins`.** In einem fremden Baum ohne `config/system/general.json`
+  löschte `uninstall` Upgrade-Sicherung und Zweitschrift, und ein einziger
+  Seitenaufruf legte dort Konfiguration und Zweitschrift an. Beide verlangen
+  jetzt `config/plugins`, `data/plugins` und `config/system/general.json`.
+  `uninstall` räumt außerdem die Nebenablagen eines abgebrochenen
+  `preupgrade.sh` (`…upgrade_sicherung.neu.<nummer>`, `.alt.<nummer>`) weg.
+
+- **„All icons downloaded." ohne ein einziges Symbol.** `postinstall.sh`
+  meldete Erfolg, sobald `download_icons.sh` mit 0 endete — das tut es auch,
+  wenn kein Abruf gelang. Gemessen bei gescheitertem Abruf: 0 von 1102
+  Symbolen und trotzdem `<OK> All icons downloaded.` Jetzt steht dort die
+  Zahl aus `letzter_lauf.json`, bei 0 eine `<WARNING>`.
+
+Gemessen und **kein** Befund: Der Ordner `data/loxone_icons/` samt `.gitkeep`
+kommt bei der Installation an. Der Installer kopiert `data/*` rekursiv; der
+Stern lässt nur Punktdateien auf der obersten Ebene von `data/` aus, nicht in
+den Unterordnern. `download_icons.sh` legt die Ordner ohnehin selbst an.
+
 ## Herkunft und Lizenz
 
 Grundlage ist [LoxBerry-Plugin-LoxoneIcons von **Michael Schlenstedt**](https://github.com/mschlenstedt/LoxBerry-Plugin-LoxoneIcons),

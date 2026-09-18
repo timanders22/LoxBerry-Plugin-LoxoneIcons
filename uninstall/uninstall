@@ -43,10 +43,30 @@ BASE="${5:-$LBHOMEDIR}"
 # LoxBerry legt dieses Skript als <home>/data/system/uninstall/<name> ab
 # (plugininstall.pl, "Copy Uninstall file"). Bis 2.0.4 stand hier
 # data/plugins/<ordner>/uninstall/ und es wurden vier Ebenen hochgegangen -
-# das landete eine Ebene UEBER der LoxBerry-Wurzel. Richtig sind drei.
+# das landete eine Ebene UEBER der LoxBerry-Wurzel.
+#
+# Bis 2.0.8 ging dieser Rueckfall fest drei Ebenen hoch und pruefte nur, ob
+# dort data/plugins liegt. In WSL gemessen (18.09.2026,
+# Pruefung-LoxoneIcons-2.0.8, Fall H4): in einem fremden Baum mit
+# data/plugins, aber ohne config/system/general.json, loeschte das Skript
+# Upgrade-Sicherung und Zweitschrift - 0 von 2 Dateien blieben. Ein LoxBerry
+# hat immer config/system/general.json (Regeln/06, Raumklima-Vorfall vom
+# 05.09.2026). Gesucht wird deshalb aufwaerts nach allen drei Merkmalen
+# (Vorlage lb_wurzel_suchen() aus Regeln/06).
+lb_wurzel_suchen() {
+    v=$(cd "$(dirname "$(readlink -f "$0")")" 2>/dev/null && pwd)
+    i=0
+    while [ -n "$v" ] && [ "$v" != "/" ] && [ $i -lt 8 ]; do
+        if [ -d "$v/config/plugins" ] && [ -d "$v/data/plugins" ] \
+           && [ -f "$v/config/system/general.json" ]; then
+            echo "$v"; return 0
+        fi
+        v=$(dirname "$v"); i=$((i + 1))
+    done
+    return 1
+}
 if [ -z "$BASE" ] || [ ! -d "$BASE" ]; then
-    BASE=$(cd "$(dirname "$(readlink -f "$0")")/../../.." 2>/dev/null && pwd)
-    if [ ! -d "$BASE/data/plugins" ]; then
+    if ! BASE=$(lb_wurzel_suchen); then
         echo "<WARNING> Die LoxBerry-Wurzel liess sich nicht ermitteln - es wird nichts aufgeraeumt."
         exit 1
     fi
@@ -176,6 +196,13 @@ if [ -d "$PDATA.upgrade_sicherung" ]; then
 else
     echo "<INFO> Keine Upgrade-Sicherung vorhanden."
 fi
+# Nebenablagen eines abgebrochenen preupgrade.sh (<ordner>.upgrade_sicherung.neu.<pid>
+# und .alt.<pid>). preupgrade.sh loescht sie bewusst nie - sie koennen die
+# einzige Abschrift sein -, also gehen sie hier.
+for REST in "$PDATA.upgrade_sicherung.neu."* "$PDATA.upgrade_sicherung.alt."*; do
+    [ -d "$REST" ] || continue
+    rm -rf "$REST" && echo "<OK> Rest einer abgebrochenen Sicherung entfernt (${REST##*/})."
+done
 
 # Seit 2.0.5 fuehrt die Oberflaeche eine Zweitschrift der Konfiguration NEBEN
 # dem Konfigurationsordner (config/plugins/<ordner>.backup.json), damit das

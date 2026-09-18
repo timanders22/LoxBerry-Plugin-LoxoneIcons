@@ -39,14 +39,58 @@
 # script from somewhere else entirely, and then every path came back
 # empty - the log stayed silent with "Log could not be set because
 # PACKAGE and/or NAME is not given" and nothing was downloaded.
-SELF=$(cd "$(dirname "$0")" && pwd)
-PNAME=$(basename "$SELF")
-LBHOMEDIR=$(cd "$SELF/../../.." && pwd)
+#
+# Die Wurzel wird GELESEN, nicht geraten (Regeln/06; Bestand-2026-09-18,
+# klasse-H/Ergebnis.md, Bauart H1). Bis 2.0.8 stand hier
+#     LBHOMEDIR=$(cd "$SELF/../../.." && pwd)
+# - das ueberschrieb ein gesetztes $LBHOMEDIR, und der Ordnername kam aus dem
+# Ablageort. In WSL gemessen (18.09.2026, Pruefung-LoxoneIcons-2.0.8, Fall H1):
+# aus einem Pruefarchiv unter <Wurzel>/pruefung/loxoneicons/bin/ gestartet,
+# legte das Skript in der LAUFENDEN Anlage data/plugins/bin und log/plugins/bin
+# an - drei Ebenen ueber bin/ liegt dort die echte Wurzel.
+#
+# Deshalb: $LBHOMEDIR, wenn es eine LoxBerry-Wurzel bezeichnet; sonst
+# aufwaerts suchen bis zu config/plugins, data/plugins UND
+# config/system/general.json. Geschrieben wird nur, wenn das Skript wirklich
+# unter <Wurzel>/bin/plugins/<ordner>/ liegt - sonst Abbruch, bevor irgendein
+# Ordner entsteht.
+SELF=$(cd "$(dirname "$(readlink -f "$0")")" && pwd -P)
+li_ist_wurzel() {
+    [ -d "$1/config/plugins" ] && [ -d "$1/data/plugins" ] \
+        && [ -f "$1/config/system/general.json" ]
+}
+li_wurzel_suchen() {
+    li_v="$SELF"
+    li_i=0
+    while [ -n "$li_v" ] && [ "$li_v" != "/" ] && [ "$li_i" -lt 8 ]; do
+        if li_ist_wurzel "$li_v"; then
+            echo "$li_v"
+            return 0
+        fi
+        li_v=$(dirname "$li_v")
+        li_i=$((li_i + 1))
+    done
+    return 1
+}
+if [ -n "${LBHOMEDIR:-}" ] && li_ist_wurzel "$LBHOMEDIR"; then
+    LBHOMEDIR=$(cd "$LBHOMEDIR" && pwd -P)
+else
+    LBHOMEDIR=$(li_wurzel_suchen) || LBHOMEDIR=""
+fi
+PNAME="${LBPPLUGINDIR:-}"
+[ -n "$PNAME" ] || PNAME=$(basename "$SELF")
+
+if [ -z "$LBHOMEDIR" ] || [ "$SELF" != "$LBHOMEDIR/bin/plugins/$PNAME" ]; then
+    echo "<ERROR> $0 liegt nicht in einer LoxBerry-Installation"
+    echo "<ERROR> (erwartet <Wurzel>/bin/plugins/<ordner>/, Wurzel: ${LBHOMEDIR:-nicht gefunden})."
+    echo "<ERROR> Es wird nichts angelegt und nichts geladen."
+    exit 1
+fi
 
 PDATA="$LBHOMEDIR/data/plugins/$PNAME"
 PLOG="$LBHOMEDIR/log/plugins/$PNAME"
 
-if [ -z "$PNAME" ] || [ ! -r "$LBHOMEDIR/libs/bashlib/loxberry_log.sh" ]; then
+if [ ! -r "$LBHOMEDIR/libs/bashlib/loxberry_log.sh" ]; then
     echo "<ERROR> Cannot work out the LoxBerry folders from $0. Giving up."
     exit 1
 fi

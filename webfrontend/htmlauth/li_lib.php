@@ -53,7 +53,14 @@ function li_paths($neu = false)
     $home = $quelle('LBHOMEDIR', 'LBHOMEDIR');
     $ordner = $quelle('LBPPLUGINDIR', 'LBPPLUGINDIR');
     $installiert = dirname(dirname(dirname(dirname(__DIR__))));
+    /* Wurzel ist, was config/plugins, data/plugins UND
+       config/system/general.json traegt (Regeln/06). Bis 2.0.8 genuegte
+       data/plugins; in WSL gemessen (18.09.2026, Pruefung-LoxoneIcons-2.0.8,
+       Fall U1): in einem fremden Baum mit data/plugins legte ein einziger
+       Seitenaufruf dort Konfiguration und Zweitschrift an. */
     if ($home === '' && is_dir($installiert . '/data/plugins')
+        && is_dir($installiert . '/config/plugins')
+        && is_file($installiert . '/config/system/general.json')
         && basename(dirname(__DIR__)) === 'plugins') {
         $home = $installiert;
     }

@@ -113,3 +113,18 @@ Aenderungen gegenueber dem Original (Apache License 2.0, Abschnitt 4 b)
        sperrte das Plugin dauerhaft aus. li_lib.php entschied dasselbe mit
        strpos() ueber die ganze Befehlszeile. Beide Stellen pruefen jetzt
        argumentweise.
+
+2.0.8  preupgrade.sh loeschte die liegende Upgrade-Sicherung, bevor
+       feststand, ob es etwas Neues zu sichern gab; nach einem abgebrochenen
+       Upgrade vernichtete der zweite Lauf damit die einzige Abschrift des
+       Iconsatzes. Jetzt bleibt sie liegen, wenn der laufende Satz nichts
+       traegt, und eine neue Sicherung entsteht daneben, wird gezaehlt und
+       erst dann per Umbenennen getauscht. postupgrade.sh loescht die
+       Sicherung nur noch nach nachweislich gelungenem Zurueckstellen.
+       download_icons.sh rechnet die LoxBerry-Wurzel nicht mehr aus dem
+       Ablageort, sondern liest $LBHOMEDIR bzw. sucht nach
+       config/system/general.json, und schreibt nur aus einer Installation
+       heraus. uninstall/uninstall und li_lib.php erkennen die Wurzel
+       ebenfalls an general.json; uninstall raeumt die Nebenablagen der
+       Sicherung mit weg. postinstall.sh meldet Erfolg nach der Zahl der
+       angekommenen Symbole, nicht nach dem Rueckgabewert.

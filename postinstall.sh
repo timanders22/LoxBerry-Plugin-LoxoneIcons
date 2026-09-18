@@ -100,7 +100,28 @@ if [ $? -ne 0 ]; then
 	echo "<WARNING> Downloading the icons did not finish cleanly. You can start it"
 	echo "<WARNING> again at any time with the button on the plugin's web page."
 else
-	echo "<OK> All icons downloaded."
+	# Rueckgabewert 0 heisst nur "ohne Abbruch durchgelaufen", nicht "alles
+	# da": download_icons.sh meldet fehlende Symbole als Warnung und endet
+	# trotzdem mit 0. Bis 2.0.8 stand hier unbedingt "All icons downloaded." -
+	# in WSL gemessen (18.09.2026, Pruefung-LoxoneIcons-2.0.8, Fall S1): bei
+	# gescheitertem Abruf 0 von 1102 Symbolen und trotzdem diese Zeile.
+	# Gezaehlt wird, was letzter_lauf.json sagt (schreibe_stand()).
+	LI_STAND=$(cat "$PDATA/letzter_lauf.json" 2>/dev/null)
+	LI_DA=$(printf '%s' "$LI_STAND" | sed -n 's/.*"vorhanden":\([0-9][0-9]*\).*/\1/p')
+	LI_SOLL=$(printf '%s' "$LI_STAND" | sed -n 's/.*"soll":\([0-9][0-9]*\).*/\1/p')
+	if [ -z "$LI_DA" ] || [ -z "$LI_SOLL" ]; then
+		echo "<WARNING> Ob Symbole angekommen sind, liess sich nicht feststellen"
+		echo "<WARNING> ($PDATA/letzter_lauf.json fehlt oder ist unlesbar)."
+	elif [ "$LI_DA" -eq 0 ]; then
+		echo "<WARNING> Es ist kein einziges Symbol angekommen (0 von $LI_SOLL)."
+		echo "<WARNING> Internetzugang des LoxBerry pruefen; der Abruf laesst sich"
+		echo "<WARNING> jederzeit ueber die Schaltflaeche in der Plugin-Oberflaeche erneut anstossen."
+	else
+		echo "<OK> $LI_DA von $LI_SOLL Symbolen vorhanden."
+		if [ "$LI_DA" -lt "$LI_SOLL" ]; then
+			echo "<INFO> Welche fehlen, nennt der Reiter Test der Plugin-Oberflaeche."
+		fi
+	fi
 fi
 
 # Exit with Status 0
