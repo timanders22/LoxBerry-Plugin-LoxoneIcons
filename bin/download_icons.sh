@@ -66,6 +66,46 @@ PNGFILLED="$PDATA/loxone_icons/png/filled"
 PNGOUTLINED="$PDATA/loxone_icons/png/outlined"
 LOCK="$PDATA/download.running"
 
+# ---------- Einen Lauf dieses Skriptes argumentweise erkennen ----------
+#
+# Wortgleich in uninstall/uninstall (dort zusaetzlich mit einem Durchlauf
+# durch /proc). Wer die eine aendert, aendert die andere mit.
+#
+# Gemessen am 18.09.2026 in WSL Ubuntu (Pruefung-LoxoneIcons-2.0.7): ein ueber
+# seine Shebang-Zeile gestartetes Bash-Skript traegt
+#     argv[0] = /bin/bash           (der Interpreter, NICHT das Skript)
+#     argv[1] = <voller Skriptpfad>
+#     argv[2] = --force             (nur beim vollstaendigen Neuaufbau)
+SKRIPT="$SELF/$(basename "$0")"
+SKRIPT_R=$(readlink -f "$0" 2>/dev/null)
+[ -n "$SKRIPT_R" ] || SKRIPT_R="$SKRIPT"
+DIENST_UID=$(id -u loxberry 2>/dev/null)
+[ -n "$DIENST_UID" ] || DIENST_UID=$(stat -c %u "$LBHOMEDIR" 2>/dev/null)
+[ -n "$DIENST_UID" ] || DIENST_UID=$(id -u)
+
+ist_download() {
+    [ -r "/proc/$1/cmdline" ] || return 1
+    {
+        IFS= read -r -d '' li_a0 || return 1
+        IFS= read -r -d '' li_a1 || return 1
+        case "${li_a0##*/}" in bash|sh) ;; *) return 1 ;; esac
+        if [ "$li_a1" != "$SKRIPT" ] && [ "$li_a1" != "$SKRIPT_R" ]; then
+            case "$li_a1" in
+                /*) li_voll="$li_a1" ;;
+                *)  li_cwd=$(readlink "/proc/$1/cwd" 2>/dev/null)
+                    [ -n "$li_cwd" ] || return 1
+                    li_voll="$li_cwd/$li_a1" ;;
+            esac
+            [ "$(readlink -f "$li_voll" 2>/dev/null)" = "$SKRIPT_R" ] || return 1
+        fi
+        if IFS= read -r -d '' li_a2; then
+            [ "$li_a2" = "--force" ] || return 1
+            IFS= read -r -d '' li_a3 && return 1
+        fi
+        return 0
+    } < "/proc/$1/cmdline"
+}
+
 # Logging
 . $LBHOMEDIR/libs/bashlib/loxberry_log.sh
 PACKAGE=$PNAME
@@ -80,14 +120,27 @@ LOGSTART "$(basename $0) started."
 
 # Only one run at a time. The web interface starts this script detached,
 # so a user pressing the button twice would otherwise run it twice.
+#
+# Die Nummer aus der Sperrdatei wird argumentweise geprueft, nicht nur mit
+# "kill -0" auf Leben abgeklopft. Bis 2.0.7 genuegte irgendein lebender
+# Prozess mit derselben Nummer, damit dieses Skript jeden weiteren Lauf
+# ablehnte: eine veraltete Sperrdatei, deren Nummer das System inzwischen neu
+# vergeben hatte, sperrte das Plugin dauerhaft aus - Symbole liessen sich
+# weder ergaenzen noch neu holen. Gemessen am 18.09.2026 (Pruefstand Fall 8):
+# Koeder "sleep 900", seine Nummer in der Sperrdatei, Protokollzeile
+# "Another run is already in progress (PID 672641). Giving up.", rc 1.
 if [ -e "$LOCK" ]; then
     OLDPID=$(cat "$LOCK" 2>/dev/null)
-    if [ -n "$OLDPID" ] && kill -0 "$OLDPID" 2>/dev/null; then
+    case "$OLDPID" in
+        ''|*[!0-9]*) OLDPID="" ;;
+    esac
+    if [ -n "$OLDPID" ] && ist_download "$OLDPID" \
+       && [ "$(stat -c %u "/proc/$OLDPID" 2>/dev/null)" = "$DIENST_UID" ]; then
         LOGWARN "Another run is already in progress (PID $OLDPID). Giving up."
         LOGEND "Bye."
         exit 1
     fi
-    LOGINF "Found a stale lock file of PID $OLDPID. Ignoring it."
+    LOGINF "Found a stale lock file of PID ${OLDPID:-?}. Ignoring it."
 fi
 echo $$ > "$LOCK"
 

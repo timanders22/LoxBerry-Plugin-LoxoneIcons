@@ -481,8 +481,80 @@ function li_archive()
 }
 
 /**
+ * Gehoert die Prozessnummer einem Lauf von download_icons.sh?
+ *
+ * Argumentweise, nicht ueber eine Teilzeichenkette. Bis 2.0.7 stand in
+ * li_lauf() ein strpos() ueber die GANZE Befehlszeile; das trifft auch einen
+ * Editor mit der Datei im Aufruf oder ein Sicherungsskript. Gemessen am
+ * 18.09.2026 (Pruefung-LoxoneIcons-2.0.7, Fall 10): der Koeder
+ * "bash -c 'sleep 900; : <skriptpfad>'", seine Nummer in der Sperrdatei -
+ * li_lauf() meldete WAHR, und die Oberflaeche verweigerte damit jeden Start.
+ *
+ * Erwartet wird genau die Befehlszeile, die ein Shebang-Start erzeugt
+ * (gemessen ebenda): argv[0] der Interpreter, argv[1] der eigene Pfad,
+ * hoechstens noch "--force". Dieselbe Pruefung steht in bin/download_icons.sh
+ * und in uninstall/uninstall.
+ */
+function li_ist_download($pid)
+{
+    $pid = (int) $pid;
+    if ($pid <= 0) {
+        return false;
+    }
+    $roh = @file_get_contents('/proc/' . $pid . '/cmdline');
+    if (!is_string($roh) || $roh === '') {
+        return false;
+    }
+    $args = explode("\0", rtrim($roh, "\0"));
+    if (count($args) < 2 || count($args) > 3) {
+        return false;
+    }
+    $a0 = basename($args[0]);
+    if ($a0 !== 'bash' && $a0 !== 'sh') {
+        return false;
+    }
+    if (count($args) === 3 && $args[2] !== '--force') {
+        return false;
+    }
+
+    $p = li_paths();
+    $skript = $p['skript'];
+    $skript_r = @realpath($skript);
+    if ($skript_r === false) {
+        $skript_r = $skript;
+    }
+    $a1 = $args[1];
+    if ($a1 !== $skript && $a1 !== $skript_r) {
+        if (substr($a1, 0, 1) !== '/') {
+            $cwd = @readlink('/proc/' . $pid . '/cwd');
+            if (!is_string($cwd) || $cwd === '') {
+                return false;
+            }
+            $a1 = $cwd . '/' . $a1;
+        }
+        $a1r = @realpath($a1);
+        if ($a1r === false || $a1r !== $skript_r) {
+            return false;
+        }
+    }
+
+    // Der Download laeuft als der Benutzer, dem der LoxBerry gehoert. Laesst
+    // sich der Eigentuemer nicht bestimmen, entfaellt nur diese eine
+    // Verschaerfung - die Befehlszeile ist bereits geprueft.
+    $soll = ($p['home'] !== '') ? @fileowner($p['home']) : false;
+    if ($soll === false) {
+        $soll = @fileowner($skript);
+    }
+    $ist = @fileowner('/proc/' . $pid);
+    if ($soll !== false && $ist !== false && $soll !== $ist) {
+        return false;
+    }
+    return true;
+}
+
+/**
  * Laeuft ein Download? Beurteilt wird der Prozess, nicht die Sperrdatei:
- * eine Sperrdatei ohne lebenden Prozess ist ein Rest (download_icons.sh
+ * eine Sperrdatei ohne passenden Prozess ist ein Rest (download_icons.sh
  * uebergeht ihn selbst). Rueckgabe array(laeuft, pid).
  */
 function li_lauf()
@@ -495,11 +567,7 @@ function li_lauf()
     if ($pid <= 0) {
         return array(false, 0);
     }
-    $cmd = @file_get_contents('/proc/' . $pid . '/cmdline');
-    if (is_string($cmd) && strpos($cmd, 'download_icons.sh') !== false) {
-        return array(true, $pid);
-    }
-    return array(false, $pid);
+    return array(li_ist_download($pid), $pid);
 }
 
 /** Startet download_icons.sh abgekoppelt. Rueckgabe '' oder der Grund. */

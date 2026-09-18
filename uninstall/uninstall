@@ -26,11 +26,13 @@
 #      Beenden geloescht, damit ein noch laufender Durchgang beim Aufraeumen
 #      nicht ins Leere greift.
 #
-# ZUR PROZESSSUCHE: Die Sperrdatei enthaelt die PID des laufenden
-# Durchgangs - die ist massgeblich. "pkill -f download_icons.sh" waere
-# falsch: das durchsucht die ganze Befehlszeile und traefe auch einen
-# Editor mit offener Datei. Fehlt die Sperrdatei, wird /proc
-# argumentweise durchgesehen und der volle Pfad verglichen.
+# ZUR PROZESSSUCHE: Eine Prozessnummer ist kein Ausweis. "pkill -f
+# download_icons.sh" waere falsch - das durchsucht die ganze Befehlszeile und
+# traefe auch einen Editor mit offener Datei. Eine Nummer aus der Sperrdatei
+# ist es aber ebenso wenig: sie kann veraltet und laengst neu vergeben sein.
+# Deshalb geht JEDE Nummer - die aus der Sperrdatei wie jeder Fund aus /proc -
+# durch dieselbe argumentweise Pruefung (ist_download), und zwar vor JEDEM
+# Signal erneut.
 
 PDIR=$3
 [ -n "$PDIR" ] || PDIR="loxoneicons"
@@ -54,33 +56,117 @@ PDATA="$BASE/data/plugins/$PDIR"
 SKRIPT="$BASE/bin/plugins/$PDIR/download_icons.sh"
 LOCK="$PDATA/download.running"
 
-beenden() {
-    kill "$1" 2>/dev/null
-    for i in 1 2 3 4 5; do
-        kill -0 "$1" 2>/dev/null || return 0
-        sleep 1
-    done
-    kill -9 "$1" 2>/dev/null
+# Der Pfad ist die Identitaet des Skripts; ein Symlink davor wird aufgeloest.
+SKRIPT_R=$(readlink -f "$SKRIPT" 2>/dev/null)
+[ -n "$SKRIPT_R" ] || SKRIPT_R="$SKRIPT"
+
+# Der Download laeuft als loxberry: die Oberflaeche, postinstall.sh (Z. 98)
+# und postupgrade.sh (Z. 37) starten ihn alle als dieser Benutzer. Dieses
+# Skript hier laeuft als root - "id -u" waere deshalb der falsche Rueckfall,
+# er ergaebe 0 und damit eine Suche, die den Download gar nicht sehen kann.
+# Gibt es den Benutzer nicht, gilt der Eigentuemer der LoxBerry-Wurzel.
+DIENST_UID=$(id -u loxberry 2>/dev/null)
+[ -n "$DIENST_UID" ] || DIENST_UID=$(stat -c %u "$BASE" 2>/dev/null)
+[ -n "$DIENST_UID" ] || DIENST_UID=$(id -u)
+
+# ---------- Einen Download argumentweise erkennen ----------
+#
+# Gemessen am 18.09.2026 in WSL Ubuntu (Pruefung-LoxoneIcons-2.0.7,
+# messprotokoll_vorher.txt): ein ueber seine Shebang-Zeile gestartetes
+# Bash-Skript traegt
+#     argv[0] = /bin/bash           (der Interpreter, NICHT das Skript)
+#     argv[1] = <voller Skriptpfad>
+#     argv[2] = --force             (nur beim vollstaendigen Neuaufbau)
+#
+# Bis 2.0.7 verglich die Schleife hier argv[0] mit dem Skriptpfad. Das trifft
+# nie: ein laufender Download ohne Sperrdatei ueberlebte die Deinstallation
+# (Pruefstand Fall 4 und 5: "erwartet TOT, gemessen LEBT"). Und der Zweig
+# darueber schickte das Signal an die Nummer aus der Sperrdatei, ohne die
+# Befehlszeile anzusehen (Fall 1: Koeder "sleep 900", gemessen
+# "<OK> Laufenden Download beendet (PID 666810, aus der Sperrdatei)." -
+# der Koeder war danach tot).
+#
+# Dieselbe Pruefung steht wortgleich in bin/download_icons.sh (dort ohne
+# /proc-Durchlauf, nur fuer die Nummer aus der Sperrdatei). Wer die eine
+# aendert, aendert die andere mit.
+ist_download() {
+    [ -r "/proc/$1/cmdline" ] || return 1
+    {
+        IFS= read -r -d '' li_a0 || return 1
+        IFS= read -r -d '' li_a1 || return 1
+        case "${li_a0##*/}" in bash|sh) ;; *) return 1 ;; esac
+        if [ "$li_a1" != "$SKRIPT" ] && [ "$li_a1" != "$SKRIPT_R" ]; then
+            # Relativ gestartet: gegen das Arbeitsverzeichnis des Prozesses.
+            case "$li_a1" in
+                /*) li_voll="$li_a1" ;;
+                *)  li_cwd=$(readlink "/proc/$1/cwd" 2>/dev/null)
+                    [ -n "$li_cwd" ] || return 1
+                    li_voll="$li_cwd/$li_a1" ;;
+            esac
+            [ "$(readlink -f "$li_voll" 2>/dev/null)" = "$SKRIPT_R" ] || return 1
+        fi
+        # Hoechstens noch --force, und nichts dahinter. Anders ruft das Plugin
+        # das Skript nirgends auf.
+        if IFS= read -r -d '' li_a2; then
+            [ "$li_a2" = "--force" ] || return 1
+            IFS= read -r -d '' li_a3 && return 1
+        fi
+        return 0
+    } < "/proc/$1/cmdline"
 }
 
-GEFUNDEN=0
-if [ -f "$LOCK" ]; then
-    P=$(cat "$LOCK" 2>/dev/null)
-    if [ -n "$P" ] && kill -0 "$P" 2>/dev/null; then
-        beenden "$P"; GEFUNDEN=1
-        echo "<OK> Laufenden Download beendet (PID $P, aus der Sperrdatei)."
+# Alle eigenen Laeufe, nicht nur der aus der Sperrdatei: ein zweiter Lauf ohne
+# Eintrag blieb bis 2.0.7 stehen (Pruefstand Fall 7b).
+downloads() {
+    {
+        for li_d in /proc/[0-9]*; do
+            li_p="${li_d#/proc/}"
+            ist_download "$li_p" || continue
+            [ "$(stat -c %u "$li_d" 2>/dev/null)" = "$DIENST_UID" ] || continue
+            echo "$li_p"
+        done
+        li_s=""
+        [ -f "$LOCK" ] && IFS= read -r li_s < "$LOCK" 2>/dev/null
+        case "$li_s" in
+            ''|*[!0-9]*) ;;
+            *)  if ist_download "$li_s" \
+                   && [ "$(stat -c %u "/proc/$li_s" 2>/dev/null)" = "$DIENST_UID" ]; then
+                    echo "$li_s"
+                fi ;;
+        esac
+    } | sort -un
+}
+
+WARNUNG=0
+ZIEL=$(downloads)
+if [ -z "$ZIEL" ]; then
+    echo "<INFO> Es lief kein Download."
+else
+    echo "<INFO> Laufender Download wird beendet (PID $(printf '%s' "$ZIEL" | tr '\n' ' '))."
+    kill $ZIEL 2>/dev/null
+    for i in 1 2 3 4 5; do
+        [ -n "$(downloads)" ] || break
+        sleep 1
+    done
+    # Vor dem harten Signal wird NEU gesucht, nicht die Liste von vorhin
+    # wiederverwendet: zwischen den beiden Signalen kann ein Prozess enden und
+    # seine Nummer neu vergeben werden - "kill -9" traefe dann einen Fremden.
+    REST=$(downloads)
+    if [ -n "$REST" ]; then
+        kill -9 $REST 2>/dev/null
+        sleep 1
+    fi
+    # "beendet" ist eine Zusicherung, kein Rueckgabewert: es wird nachgesehen.
+    UEBRIG=$(downloads)
+    if [ -n "$UEBRIG" ]; then
+        echo "<WARNING> Ein Download laeuft weiter (PID $(printf '%s' "$UEBRIG" | tr '\n' ' '))."
+        WARNUNG=1
+    else
+        echo "<OK> Laufenden Download beendet."
     fi
 fi
-for D in /proc/[0-9]*; do
-    P=$(basename "$D")
-    [ -r "$D/cmdline" ] || continue
-    ERSTES=$(tr '\0' '\n' < "$D/cmdline" 2>/dev/null | head -1)
-    if [ "$ERSTES" = "$SKRIPT" ] && kill -0 "$P" 2>/dev/null; then
-        beenden "$P"; GEFUNDEN=1
-        echo "<OK> Weiteren Download beendet (PID $P)."
-    fi
-done
-[ "$GEFUNDEN" -eq 0 ] && echo "<INFO> Es lief kein Download."
+# Die Sperrdatei geht in jedem Fall - auch eine veraltete, deren Nummer
+# inzwischen einem Fremden gehoert. Sonst blockiert sie den naechsten Lauf.
 rm -f "$LOCK"
 
 if [ -d "$PDATA.upgrade_sicherung" ]; then
@@ -103,4 +189,4 @@ fi
 echo "<INFO> Die heruntergeladenen Symbole gehen mit dem Datenordner des"
 echo "<INFO> Plugins. Wer sie behalten will, sichert sie VOR dem"
 echo "<INFO> Deinstallieren aus $PDATA."
-exit 0
+exit "$WARNUNG"

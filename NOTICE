@@ -95,3 +95,21 @@ Aenderungen gegenueber dem Original (Apache License 2.0, Abschnitt 4 b)
        Test und Logdateien; Formularmerkmal gegen fremde Absender;
        Einstellungen sichern und zurueckspielen. download_icons.sh schreibt
        das Ergebnis jedes Laufs nach letzter_lauf.json. README auf Deutsch.
+
+2.0.7  Prozesse werden argumentweise erkannt, nicht ueber eine Nummer oder
+       eine Teilzeichenkette. uninstall/uninstall schickte das Signal an die
+       Nummer aus der Sperrdatei, sobald diese ueberhaupt lebte - eine
+       veraltete Sperrdatei mit neu vergebener Nummer traf damit einen
+       Fremden. Der Rueckfall ueber /proc verglich argv[0] mit dem
+       Skriptpfad und konnte nie treffen, weil argv[0] bei einem
+       Shebang-Start der Interpreter ist; ein laufender Download ohne
+       Sperrdatei ueberlebte deshalb die Deinstallation. Jetzt werden argv[0],
+       argv[1], die weiteren Argumente und der Prozessbenutzer geprueft, vor
+       jedem Signal erneut, alle eigenen Laeufe behandelt und die Wirkung
+       nachgesehen.
+
+       download_icons.sh lehnte einen neuen Lauf ab, sobald irgendein Prozess
+       mit der Nummer aus der Sperrdatei lebte - eine veraltete Sperrdatei
+       sperrte das Plugin dauerhaft aus. li_lib.php entschied dasselbe mit
+       strpos() ueber die ganze Befehlszeile. Beide Stellen pruefen jetzt
+       argumentweise.

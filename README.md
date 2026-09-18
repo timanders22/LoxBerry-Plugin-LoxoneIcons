@@ -301,6 +301,57 @@ braucht keinen:
   berichtigt. Sieben Symbole (`awning-*`) gibt es bei Loxone nur gefüllt, nicht
   umrissen — die Warnungen dazu sind erwartet.
 
+## Fassung 2.0.7 — eine Prozessnummer ist kein Ausweis
+
+Anlass ist eine Bestandsmessung vom 18.09.2026
+(`Bestand-2026-09-18/klasse-F-nachmessung`). Gemessen wurde in WSL Ubuntu an
+einem nachgebauten LoxBerry-Baum; die Prüfstände, Protokolle und Eichungen
+liegen unter `Pruefung-LoxoneIcons-2.0.7/`. Ins Netz ging dabei nichts.
+
+- **Beim Deinstallieren wurde ein fremder Prozess beendet.** `uninstall`
+  schickte das Signal an die Nummer aus der Sperrdatei `download.running`,
+  sobald diese Nummer überhaupt lebte — ohne die Befehlszeile anzusehen. Eine
+  Sperrdatei bleibt aber liegen, wenn ein Lauf hart abbricht, und das System
+  vergibt Prozessnummern wieder. Gemessen mit einem Köder `sleep 900`, dessen
+  Nummer in der Sperrdatei stand:
+  `<OK> Laufenden Download beendet (PID 666810, aus der Sperrdatei).` — der
+  Köder war danach tot. Jetzt geht **jede** Nummer, auch die aus der
+  Sperrdatei, durch dieselbe argumentweise Prüfung, und zwar vor jedem Signal
+  erneut — auch vor `kill -9`, denn zwischen den beiden Signalen kann ein
+  Prozess enden und seine Nummer neu vergeben werden.
+
+- **Der Rückfall über `/proc` hat nie getroffen.** Er verglich `argv[0]` mit
+  dem Pfad von `download_icons.sh`. `argv[0]` ist bei einem über seine
+  Shebang-Zeile gestarteten Skript aber **der Interpreter**; der eigene Pfad
+  steht in `argv[1]`. Gemessen an einem laufenden `download_icons.sh`:
+  `/bin/bash`, `<pfad>/download_icons.sh`, `--force`. Ein laufender Download
+  **ohne** Sperrdatei überlebte die Deinstallation deshalb bisher unbemerkt
+  und schrieb weiter in Ordner, die es nicht mehr gab. Jetzt wird `argv[0]`
+  gegen den Interpreter, `argv[1]` gegen den eigenen Pfad (Symlinks aufgelöst,
+  relativer Start über `/proc/<pid>/cwd`) und der Prozessbenutzer gegen den
+  LoxBerry-Benutzer geprüft; als weiteres Argument gilt nur `--force`.
+
+- **Ein zweiter Lauf blieb stehen.** Behandelt wurde nur die Nummer aus der
+  Sperrdatei. Jetzt werden alle eigenen Läufe eingesammelt und beendet, und
+  am Ende wird nachgesehen, ob wirklich keiner mehr läuft; bleibt einer übrig,
+  sagt das `uninstall` als `<WARNING>` und endet mit Rückgabewert 1.
+
+- **Eine veraltete Sperrdatei konnte das Plugin dauerhaft aussperren.**
+  `download_icons.sh` lehnte jeden neuen Lauf ab, sobald *irgendein* Prozess
+  mit der Nummer aus der Sperrdatei lebte:
+  `Another run is already in progress (PID 672641). Giving up.` — dabei war
+  das der Köder `sleep 900`. Symbole ließen sich dann weder ergänzen noch neu
+  holen. Die Nummer geht jetzt durch dieselbe Prüfung; ein echter zweiter Lauf
+  wird weiterhin abgewiesen (nachgemessen).
+
+- **Die Oberfläche meldete „läuft schon" für einen Fremden.** `li_lauf()`
+  entschied mit `strpos()` über die ganze Befehlszeile und hielt einen Köder,
+  der den Dateinamen nur erwähnte, für einen Download — und verweigerte damit
+  den Start. Auch diese Stelle prüft jetzt argumentweise.
+
+Die Sperrdatei wird beim Deinstallieren in jedem Fall entfernt, auch eine
+veraltete.
+
 ## Herkunft und Lizenz
 
 Grundlage ist [LoxBerry-Plugin-LoxoneIcons von **Michael Schlenstedt**](https://github.com/mschlenstedt/LoxBerry-Plugin-LoxoneIcons),
