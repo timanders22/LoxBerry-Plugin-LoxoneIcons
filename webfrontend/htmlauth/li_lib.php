@@ -202,8 +202,11 @@ function li_wert_pruefen($schluessel, $wert)
     }
     if ($schluessel === 'aktionstoken') {
         /* Leer ist erlaubt (dann wird eines erzeugt), sonst Hex, 32 bis 128
-           Zeichen - so weit gefasst, wie Token dieses Plugins aussehen. */
-        return $wert === '' || preg_match('/^[0-9a-f]{32,128}$/', $wert) === 1;
+           Zeichen - so weit gefasst, wie Token dieses Plugins aussehen.
+           \z statt $: $ passt auch vor einem Zeilenumbruch am Ende, und bis
+           2.0.8 nahm das Zurueckspielen ein Token mit angehaengtem \n an
+           (gemessen 24.09.2026 unter PHP 7.4 und 8.4). */
+        return $wert === '' || preg_match('/^[0-9a-f]{32,128}\z/', $wert) === 1;
     }
     return false;
 }
@@ -269,7 +272,7 @@ function li_config()
         $zweit = li_json_lesen($p['zweitschrift']);
         if (is_array($zweit) && isset($zweit['aktionstoken'])
             && is_string($zweit['aktionstoken'])
-            && preg_match('/^[0-9a-f]{32,128}$/', $zweit['aktionstoken']) === 1) {
+            && preg_match('/^[0-9a-f]{32,128}\z/', $zweit['aktionstoken']) === 1) {
             $d = $zweit;
             $zustand = 'zweitschrift';
             li_log('Konfiguration ' . ($roh_da ? 'unlesbar' : 'fehlte')
