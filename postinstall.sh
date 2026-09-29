@@ -72,6 +72,101 @@ case "$PDATA$PHTMLAUTH$PBIN" in
 	*)  echo "<FAIL> Die Plugin-Pfade sind nicht absolut - Abbruch."; exit 1 ;;
 esac
 
+# ---------- Aktualisierung oder Neuinstallation (I1/I2) ----------
+#
+# Entscheidung des Hausherrn vom 29.09.2026, Nr. 1: zurueckgespielt wird nur,
+# wenn die Marke aus preupgrade.sh VORHANDEN ist - kein Altersvergleich. Bis
+# 2.0.10 kannte die Linie keine Marke: eine Neuinstallation holte beim ersten
+# Seitenaufruf das Token einer liegengebliebenen Zweitschrift zurueck, und
+# eine liegengebliebene Symbolsicherung liess dieses Skript "Upgrade
+# detected" melden und nichts laden (in WSL gemessen, Pruefung 29.09.2026,
+# Faelle C und G). Die Marke faellt beim Beenden dieses Skripts (trap), auch
+# bei einem Abbruch; der Rueckgabewert bleibt erhalten.
+MARKE="$ARGV5/data/plugins/$pluginname.upgrade_laeuft"
+LI_UPGRADE=0
+[ -n "$pluginname" ] && [ -f "$MARKE" ] && LI_UPGRADE=1
+li_marke_weg() {
+	li_rc=$?
+	[ -n "$pluginname" ] && rm -f "$MARKE" 2>/dev/null
+	return "$li_rc"
+}
+trap li_marke_weg EXIT
+
+ZWEIT="$ARGV5/config/plugins/$pluginname.backup.json"
+PCONFIG="${LBPCONFIG:-$ARGV5/config/plugins}/$pluginname"
+SICHER="${LBPDATA:-$ARGV5/data/plugins}/${pluginname}.upgrade_sicherung"
+
+# Traegt die Zweitschrift ein gueltiges Token? Dieselbe Regel wie li_config():
+# ein JSON-Objekt, aktionstoken Hex mit 32 bis 128 Zeichen.
+# Rueckgabe 0 ja, 1 nein, 2 nicht pruefbar (kein php).
+li_zweit_brauchbar() {
+	command -v php >/dev/null 2>&1 || return 2
+	php -r '$d = json_decode((string) @file_get_contents($argv[1]), true);
+		exit(is_array($d) && isset($d["aktionstoken"]) && is_string($d["aktionstoken"])
+			&& preg_match("/^[0-9a-f]{32,128}\z/", $d["aktionstoken"]) === 1 ? 0 : 1);' -- "$1" 2>/dev/null
+	case "$?" in
+		0) return 0 ;;
+		1) return 1 ;;
+	esac
+	return 2
+}
+
+if [ "$LI_UPGRADE" = 1 ]; then
+	# Regeln/06: gesichert in preupgrade (hier: die Zweitschrift, die die
+	# Oberflaeche NEBEN dem Konfigurationsordner fuehrt), zurueckgespielt in
+	# postinstall. Bis 2.0.10 geschah das erst beim ersten Seitenaufruf.
+	if [ -f "$ZWEIT" ] && [ ! -f "$PCONFIG/loxoneicons.json" ]; then
+		li_zweit_brauchbar "$ZWEIT"
+		case "$?" in
+		0)
+			mkdir -p "$PCONFIG" 2>/dev/null
+			LI_NEU="$PCONFIG/loxoneicons.json.neu.$$"
+			if ( umask 077 && cp "$ZWEIT" "$LI_NEU" ) 2>/dev/null && chmod 600 "$LI_NEU" 2>/dev/null \
+			   && mv -f "$LI_NEU" "$PCONFIG/loxoneicons.json" 2>/dev/null \
+			   && cmp -s "$ZWEIT" "$PCONFIG/loxoneicons.json"; then
+				echo "<OK> Konfiguration (Aktionstoken) aus der Zweitschrift zurueckgespielt."
+			else
+				rm -f "$LI_NEU" 2>/dev/null
+				echo "<WARNING> Die Konfiguration liess sich nicht aus der Zweitschrift zurueckspielen;"
+				echo "<WARNING> die Oberflaeche versucht es beim ersten Aufruf erneut ($ZWEIT)."
+			fi
+			;;
+		1)
+			echo "<WARNING> Die Zweitschrift $ZWEIT traegt kein gueltiges Aktionstoken"
+			echo "<WARNING> (etwa gekuerzt) und wurde nicht zurueckgespielt. Die Oberflaeche legt sie"
+			echo "<WARNING> beim ersten Aufruf als .kaputt beiseite und legt ein neues Aktionstoken an."
+			;;
+		*)
+			echo "<INFO> php fehlt - die Zweitschrift wird nicht hier, sondern beim ersten"
+			echo "<INFO> Aufruf der Oberflaeche zurueckgespielt."
+			;;
+		esac
+	fi
+else
+	# Neuinstallation: Zweitschrift und Symbolsicherung einer frueheren
+	# Installation nach <name>.alt - nicht eingespielt, nicht geloescht - und
+	# EINMAL gemeldet. Ein aelteres .alt wird ersetzt. uninstall raeumt die
+	# .alt ab; li_config() liest nur <ordner>.backup.json, nie die .alt.
+	LI_BEISEITE=""
+	LI_NICHT=""
+	for LI_Q in "$ZWEIT" "$SICHER"; do
+		[ -n "$pluginname" ] || break
+		[ -e "$LI_Q" ] || continue
+		rm -rf "$LI_Q.alt" 2>/dev/null
+		if mv -f "$LI_Q" "$LI_Q.alt" 2>/dev/null && [ ! -e "$LI_Q" ]; then
+			LI_BEISEITE="$LI_BEISEITE $LI_Q.alt"
+		else
+			LI_NICHT="$LI_NICHT $LI_Q"
+		fi
+	done
+	if [ -n "$LI_BEISEITE$LI_NICHT" ]; then
+		echo "<WARNING> Neuinstallation: neben dem Plugin-Ordner lagen Sicherungen einer frueheren"
+		echo "<WARNING> Installation. Sie werden NICHT eingespielt."
+		[ -n "$LI_BEISEITE" ] && echo "<WARNING> Beiseitegelegt:$LI_BEISEITE (die Deinstallation raeumt sie ab)."
+		[ -n "$LI_NICHT" ] && echo "<WARNING> Liess sich nicht beiseitelegen:$LI_NICHT"
+	fi
+fi
+
 # The web interface serves the archives from ./files, which points at the
 # plugin's data folder.
 echo "<INFO> Linking the data folder into the web folder..."
@@ -87,8 +182,10 @@ ln -s "$PDATA" "$PHTMLAUTH/files"
 # several minutes and a good deal of traffic on Loxone's servers.
 # Die Sicherung liegt seit dieser Fassung unter data/plugins/<Ordner>.upgrade_sicherung
 # und nicht mehr in der Ramdisk; der alte Ort wird noch mitgeprueft.
-if [ -d "${LBPDATA:-$ARGV5/data/plugins}/${ARGV3}.upgrade_sicherung/loxone_icons" ] \
-   || [ -d "/tmp/${ARGV1}_upgrade/data/loxone_icons" ]; then
+# I2: "Upgrade detected" nur mit der Marke - eine liegengebliebene Sicherung
+# ist bei einer Neuinstallation oben schon nach .alt verschoben.
+if [ "$LI_UPGRADE" = 1 ] && { [ -d "${LBPDATA:-$ARGV5/data/plugins}/${ARGV3}.upgrade_sicherung/loxone_icons" ] \
+   || [ -d "/tmp/${ARGV1}_upgrade/data/loxone_icons" ]; }; then
 	echo "<INFO> Upgrade detected. The icons already downloaded will be restored,"
 	echo "<INFO> so there is nothing to download now."
 	exit 0

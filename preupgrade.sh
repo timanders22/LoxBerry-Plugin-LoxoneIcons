@@ -7,6 +7,25 @@ ARGV5=$5   # Wurzelverzeichnis des LoxBerry
 BASE="${ARGV5:-$LBHOMEDIR}"
 PDIR="${ARGV3:-loxoneicons}"
 
+# ---------- Zuerst die Marke "Aktualisierung laeuft" (I1) ----------
+#
+# Entscheidung des Hausherrn vom 29.09.2026, Nr. 1: postinstall.sh spielt die
+# Zweitschrift der Konfiguration nur zurueck, wenn diese Marke VORHANDEN ist
+# (kein Altersvergleich); ohne sie gilt der Vorgang als Neuinstallation, und
+# Liegengebliebenes wird nach <name>.alt verschoben. Die Marke liegt NEBEN dem
+# Datenordner - purge_installation loescht den Ordner selbst. postinstall.sh
+# entfernt sie beim Beenden, uninstall ebenfalls.
+MARKE="$BASE/data/plugins/$PDIR.upgrade_laeuft"
+if [ -n "$BASE" ] && mkdir -p "$BASE/data/plugins" 2>/dev/null \
+   && date +%s > "$MARKE" 2>/dev/null && [ -s "$MARKE" ]; then
+    echo "<OK> Aktualisierung angemeldet ($MARKE)."
+else
+    [ -n "$BASE" ] && rm -f "$MARKE" 2>/dev/null
+    echo "<WARNING> Die Marke $MARKE liess sich nicht anlegen. postinstall.sh behandelt"
+    echo "<WARNING> den Vorgang dann wie eine Neuinstallation: Zweitschrift der Konfiguration"
+    echo "<WARNING> und Symbolsicherung werden beiseitegelegt, nicht eingespielt."
+fi
+
 # Der heruntergeladene Iconsatz wird VERSCHOBEN, nicht nach /tmp kopiert.
 #
 # Bis 2.0.0 stand hier

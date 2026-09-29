@@ -208,10 +208,31 @@ done
 # dem Konfigurationsordner (config/plugins/<ordner>.backup.json), damit das
 # Aktionstoken ein Upgrade uebersteht. Beim Deinstallieren gehoert sie weg;
 # sie traegt das Token.
+#
+# I1 (Pruefung 29.09.2026): dazu, unabhaengig davon, ob die Zweitschrift da
+# ist, ihre .alt (Neuinstallation), .kaputt.<zeit> (Selbstheilung), die
+# Schreibreste .tmp.<pid>, die beiseitegelegte Symbolsicherung und die
+# Upgrade-Marke. Bis 2.0.10 standen die .tmp.* hinter "if [ -f Zweitschrift ]"
+# und blieben ohne sie liegen (gemessen, Fall D2). Gezaehlt wird nachher,
+# nicht der Rueckgabewert von rm.
 ZWEIT="$BASE/config/plugins/$PDIR.backup.json"
-if [ -f "$ZWEIT" ]; then
-    rm -f "$ZWEIT" "$ZWEIT".tmp.* && echo "<OK> Zweitschrift der Konfiguration entfernt."
+MARKE="$BASE/data/plugins/$PDIR.upgrade_laeuft"
+N_WEG=0
+N_BLIEB=""
+for f in "$ZWEIT" "$ZWEIT.alt" "$ZWEIT".tmp.* "$ZWEIT".kaputt.* "$MARKE" "$PDATA.upgrade_sicherung.alt"; do
+    [ -e "$f" ] || continue
+    rm -rf "$f" 2>/dev/null
+    if [ -e "$f" ]; then
+        N_BLIEB="$N_BLIEB $f"
+    else
+        N_WEG=$((N_WEG + 1))
+    fi
+done
+if [ -n "$N_BLIEB" ]; then
+    echo "<WARNING> Liess sich nicht entfernen:$N_BLIEB"
+    WARNUNG=1
 fi
+echo "<OK> Zweitschrift, beiseitegelegte Sicherungen, Schreibreste und Upgrade-Marke: $N_WEG entfernt."
 
 echo "<INFO> Die heruntergeladenen Symbole gehen mit dem Datenordner des"
 echo "<INFO> Plugins. Wer sie behalten will, sichert sie VOR dem"

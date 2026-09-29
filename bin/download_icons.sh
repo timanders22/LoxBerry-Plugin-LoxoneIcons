@@ -173,8 +173,29 @@ LOGSTART "$(basename $0) started."
 # weder ergaenzen noch neu holen. Gemessen am 18.09.2026 (Pruefstand Fall 8):
 # Koeder "sleep 900", seine Nummer in der Sperrdatei, Protokollzeile
 # "Another run is already in progress (PID 672641). Giving up.", rc 1.
-if [ -e "$LOCK" ]; then
-    OLDPID=$(cat "$LOCK" 2>/dev/null)
+#
+# C2 (Pruefung 29.09.2026): bis 2.0.10 stand hier "pruefen, dann schreiben" -
+# in 3 von 60 gleichzeitigen Starts kamen beide Laeufe an der Sperre vorbei
+# (normal + --force: 2204 Abrufe, 5 Symbole faelschlich "Not available").
+# Jetzt entsteht die Sperre atomar (noclobber, also O_EXCL). Nur wenn das
+# scheitert, wird die liegende Sperre beurteilt. Ist sie ein Rest, wird sie
+# per Umbenennen genommen, ihr Inhalt verglichen, und es gibt GENAU EINEN
+# neuen Versuch. Eine Sperre, die einem anderen Lauf gehoert, wird nie
+# geloescht. Kein flock: es vererbte sich an wget, xargs und rsvg-convert.
+li_sperre_nehmen() {
+    ( set -o noclobber; echo $$ > "$LOCK" ) 2>/dev/null
+}
+LOCK_MEIN=0
+if li_sperre_nehmen; then
+    LOCK_MEIN=1
+else
+    OLDROH=$(cat "$LOCK" 2>/dev/null)
+    if [ -z "$OLDROH" ]; then
+        # Angelegt, aber noch ohne Nummer - der andere Lauf schreibt gerade.
+        sleep 1
+        OLDROH=$(cat "$LOCK" 2>/dev/null)
+    fi
+    OLDPID="$OLDROH"
     case "$OLDPID" in
         ''|*[!0-9]*) OLDPID="" ;;
     esac
@@ -185,8 +206,26 @@ if [ -e "$LOCK" ]; then
         exit 1
     fi
     LOGINF "Found a stale lock file of PID ${OLDPID:-?}. Ignoring it."
+    WEG="$LOCK.weg.$$"
+    if mv -f "$LOCK" "$WEG" 2>/dev/null; then
+        if [ "$(cat "$WEG" 2>/dev/null)" != "$OLDROH" ]; then
+            # Inzwischen die Sperre eines neuen Laufs: zurueck an ihren Platz.
+            ln "$WEG" "$LOCK" 2>/dev/null
+            rm -f "$WEG"
+            LOGWARN "Another run started meanwhile. Giving up."
+            LOGEND "Bye."
+            exit 1
+        fi
+        rm -f "$WEG"
+    fi
+    if li_sperre_nehmen; then
+        LOCK_MEIN=1
+    else
+        LOGWARN "Another run took the lock meanwhile. Giving up."
+        LOGEND "Bye."
+        exit 1
+    fi
 fi
-echo $$ > "$LOCK"
 
 # An SVG counts as present only if it is complete. Up to 2.0.4 any file
 # larger than zero counted - but a download interrupted half way leaves a
@@ -200,14 +239,26 @@ vorhanden() {
 # web interface reads it in its "Test" tab - which icons are missing, whether
 # the last run ended cleanly - without going to the internet itself.
 # The icon names contain only a-z, 0-9, "-" and ".", so they need no escaping.
+# png_soll/png_vorhanden (C3, Pruefung 29.09.2026): zu wie vielen vollstaendigen
+# SVG eine nicht leere PNG liegt.
 schreibe_stand() {
-    local rc=$1 n=0 fehl="" i
+    local rc=$1 n=0 fehl="" i png_soll=0 png_da=0
     for i in "${icons[@]}"; do
-        if vorhanden "$SVGFILLED/$i"; then n=$((n+1)); else fehl="$fehl\"filled/$i\","; fi
-        if vorhanden "$SVGOUTLINED/$i"; then n=$((n+1)); else fehl="$fehl\"outlined/$i\","; fi
+        if vorhanden "$SVGFILLED/$i"; then
+            n=$((n+1)); png_soll=$((png_soll+1))
+            [ -s "$PNGFILLED/${i%.svg}.png" ] && png_da=$((png_da+1))
+        else
+            fehl="$fehl\"filled/$i\","
+        fi
+        if vorhanden "$SVGOUTLINED/$i"; then
+            n=$((n+1)); png_soll=$((png_soll+1))
+            [ -s "$PNGOUTLINED/${i%.svg}.png" ] && png_da=$((png_da+1))
+        else
+            fehl="$fehl\"outlined/$i\","
+        fi
     done
-    printf '{"ende":%s,"rc":%s,"soll":%s,"vorhanden":%s,"fehlend":[%s]}\n' \
-        "$(date +%s)" "$rc" "$(( ${#icons[@]} * 2 ))" "$n" "${fehl%,}" \
+    printf '{"ende":%s,"rc":%s,"soll":%s,"vorhanden":%s,"fehlend":[%s],"png_soll":%s,"png_vorhanden":%s}\n' \
+        "$(date +%s)" "$rc" "$(( ${#icons[@]} * 2 ))" "$n" "${fehl%,}" "$png_soll" "$png_da" \
         > "$PDATA/letzter_lauf.json.teil" \
         && mv -f "$PDATA/letzter_lauf.json.teil" "$PDATA/letzter_lauf.json"
 }
@@ -219,7 +270,11 @@ schreibe_stand() {
 cleanup() {
     rc=$?
     schreibe_stand "$rc"
-    rm -f "$LOCK"
+    # C2: nur die eigene Sperre - bis 2.0.10 loeschte der zuerst fertige Lauf
+    # die Sperre des anderen.
+    if [ "$LOCK_MEIN" = 1 ] && [ "$(cat "$LOCK" 2>/dev/null)" = "$$" ]; then
+        rm -f "$LOCK"
+    fi
     LOGEND "Bye."
 }
 trap cleanup EXIT
@@ -808,6 +863,7 @@ fi
 mkdir -p "$SVGFILLED" "$SVGOUTLINED" "$PNGFILLED" "$PNGOUTLINED"
 
 CHANGED=0
+ABBRUCH=""
 
 # Leftovers of 2.0.4 and older. There wget ran with -P, and with -P it does
 # NOT overwrite an existing file: an empty or truncated 8-ball.svg stayed,
@@ -858,7 +914,41 @@ if [ "$TODO" -gt 0 ]; then
     # Each file goes to <name>.teil first and is renamed only when wget
     # reports success and the file is not empty. -O overwrites; on a 404
     # wget leaves an empty file, which is removed.
-    xargs -P 4 -n 2 -a "$URLLIST" sh -c 'z="$2/${1##*/}"; if wget -q --timeout=15 --tries=2 -O "$z.teil" "$1" && [ -s "$z.teil" ]; then mv -f "$z.teil" "$z"; else rm -f "$z.teil"; fi' sh
+    #
+    # C4 (Pruefung 29.09.2026): --timeout ist eine Leerlauffrist je
+    # Lesevorgang, keine Obergrenze. Bis 2.0.10 hing der Lauf - und mit ihm
+    # postinstall.sh - bei einer Gegenstelle, die annimmt und schweigt, rund
+    # 1102 / 4 x 30 s = 2 h 18 min, bei einer tropfenden unbegrenzt. Jetzt:
+    #   - je Datei hoechstens LI_FRIST_DATEI s. Ein Symbol hat wenige KB; auch
+    #     bei 1 KB/s ist es nach Sekunden da.
+    #   - Abbruch nach LI_FEHL_GRENZE Abrufen in Folge ohne Antwort. Eine
+    #     Antwort des Servers (auch 404, wget 8) setzt den Zaehler zurueck -
+    #     die sieben umrissenen awning-* (404) loesen deshalb nichts aus; sie
+    #     wechseln sich in der Liste ohnehin mit gelieferten ab.
+    #   - Gesamtfrist LI_FRIST_GESAMT s = das Zwanzigfache der gemessenen
+    #     89 s auf einem Raspberry Pi 4; ein langsames Netz bricht einen
+    #     gesunden Lauf damit nicht ab.
+    # Das innere timeout laeuft mit --foreground: ohne legt es eine eigene
+    # Prozessgruppe an, und die Gesamtfrist erreichte den haengenden Abruf
+    # nicht (gemessen: 4 von 4 liefen nach dem Ende des Skripts weiter).
+    LI_FRIST_DATEI=120
+    LI_FEHL_GRENZE=20
+    LI_FRIST_GESAMT=1800
+    LI_FEHL=$(mktemp)
+    export LI_FEHL LI_FEHL_GRENZE LI_FRIST_DATEI
+    timeout "$LI_FRIST_GESAMT" xargs -P 4 -n 2 -a "$URLLIST" sh -c '[ "$(wc -l < "$LI_FEHL")" -ge "$LI_FEHL_GRENZE" ] && exit 0; z="$2/${1##*/}"; timeout --foreground "$LI_FRIST_DATEI" wget -q --timeout=15 --tries=2 -O "$z.teil" "$1"; w=$?; if [ "$w" -eq 0 ] && [ -s "$z.teil" ]; then mv -f "$z.teil" "$z"; else rm -f "$z.teil"; fi; case "$w" in 0|8) : > "$LI_FEHL" ;; *) echo "$w" >> "$LI_FEHL" ;; esac' sh
+    XRC=$?
+    if [ "$XRC" -eq 124 ]; then
+        ABBRUCH="the download took longer than $LI_FRIST_GESAMT seconds in total"
+    elif [ "$(wc -l < "$LI_FEHL")" -ge "$LI_FEHL_GRENZE" ]; then
+        ABBRUCH="$LI_FEHL_GRENZE downloads in a row got no answer (wget exit codes: $(sort -u "$LI_FEHL" | tr '\n' ' '))"
+    fi
+    rm -f "$LI_FEHL"
+    if [ -n "$ABBRUCH" ]; then
+        # Abgebrochene Abrufe hinterlassen .teil-Dateien.
+        find "$SVGFILLED" "$SVGOUTLINED" -maxdepth 1 -type f -name '*.teil' -delete 2>/dev/null
+        LOGERR "Download aborted: $ABBRUCH. The remaining icons were not requested. Please check the internet access of the LoxBerry."
+    fi
     NACHHER=$(zaehle_svg)
     if [ "$NACHHER" -gt "$VORHER" ]; then
         LOGOK "$(( NACHHER - VORHER )) new icons downloaded."
@@ -871,6 +961,7 @@ rm -f "$URLLIST"
 
 # Report what did not arrive instead of failing silently.
 MISSING=0
+ERWARTET=0
 for i in "${icons[@]}"; do
     if ! vorhanden "$SVGFILLED/$i"; then
         LOGWARN "Not available (filled): $i"
@@ -879,6 +970,8 @@ for i in "${icons[@]}"; do
     if ! vorhanden "$SVGOUTLINED/$i"; then
         LOGWARN "Not available (outlined): $i"
         MISSING=$((MISSING+1))
+        # Nur gefuellt bei Loxone (siehe oben, awning-*): erwartet.
+        case "$i" in awning-*) ERWARTET=$((ERWARTET+1)) ;; esac
     fi
 done
 if [ $MISSING -gt 0 ]; then
@@ -889,29 +982,93 @@ fi
 # Convert to PNG
 ##########################################################################
 
+# C3 (Pruefung 29.09.2026): bis 2.0.10 wurde der Rueckgabewert der Umwandlung
+# nie angesehen - mit einem scheiternden rsvg-convert lagen 1102 PNG mit
+# 0 Byte im Archiv, und das Protokoll endete mit "Finished". Jetzt kommt eine
+# PNG weg, wenn ein Glied der Pipe scheitert oder sie leer ist.
+li_png_pruefen() {   # $1 PNG, dann die Rueckgabewerte der Pipe
+    li_ziel=$1
+    shift
+    for li_s in "$@"; do
+        if [ "$li_s" -ne 0 ]; then
+            rm -f "$li_ziel"
+            return 1
+        fi
+    done
+    if [ ! -s "$li_ziel" ]; then
+        rm -f "$li_ziel"
+        return 1
+    fi
+    return 0
+}
+
 for i in "${icons[@]}"; do
     base=$(basename "$i" .svg)
     if vorhanden "$SVGFILLED/$i" && [ ! -s "$PNGFILLED/$base.png" ]; then
         LOGINF "Converting $i to PNG (filled)."
         sed -E 's/<path/<path fill="#FFFFFF"/g' "$SVGFILLED/$i" \
             | rsvg-convert -f png -w 96 -h 96 /dev/stdin > "$PNGFILLED/$base.png"
+        li_png_pruefen "$PNGFILLED/$base.png" "${PIPESTATUS[@]}"
         CHANGED=1
     fi
     if vorhanden "$SVGOUTLINED/$i" && [ ! -s "$PNGOUTLINED/$base.png" ]; then
         LOGINF "Converting $i to PNG (outlined)."
         sed -E 's/black/white/g' "$SVGOUTLINED/$i" \
             | rsvg-convert -f png -w 96 -h 96 /dev/stdin > "$PNGOUTLINED/$base.png"
+        li_png_pruefen "$PNGOUTLINED/$base.png" "${PIPESTATUS[@]}"
         CHANGED=1
     fi
 done
+
+# Gezaehlt wird danach, nicht waehrend: auch leere PNG frueherer Laeufe
+# kommen weg und zaehlen mit. Eine leere PNG kommt nie ins Archiv.
+PNGFEHL=0
+for i in "${icons[@]}"; do
+    base=${i%.svg}
+    if [ ! -s "$PNGFILLED/$base.png" ] && vorhanden "$SVGFILLED/$i"; then
+        rm -f "$PNGFILLED/$base.png"
+        PNGFEHL=$((PNGFEHL+1))
+    fi
+    if [ ! -s "$PNGOUTLINED/$base.png" ] && vorhanden "$SVGOUTLINED/$i"; then
+        rm -f "$PNGOUTLINED/$base.png"
+        PNGFEHL=$((PNGFEHL+1))
+    fi
+done
+if [ "$PNGFEHL" -gt 0 ]; then
+    LOGWARN "$PNGFEHL PNG files could not be made (rsvg-convert failed or wrote nothing)."
+fi
+
+# Das Ergebnis: 0 = vollstaendig (bis auf die erwarteten awning-*),
+# 1 = abgebrochen oder kein einziges Symbol, 2 = unvollstaendig.
+SOLL=$(( ${#icons[@]} * 2 ))
+SVG_DA=$(( SOLL - MISSING ))
+UNERWARTET=$(( MISSING - ERWARTET ))
+ERGEBNIS=0
+[ -n "$ABBRUCH" ] && ERGEBNIS=1
+if [ "$UNERWARTET" -gt 0 ] || [ "$PNGFEHL" -gt 0 ]; then
+    LOGWARN "Incomplete: $SVG_DA of $SOLL SVG files ($ERWARTET missing as expected - Loxone offers them filled only, $UNERWARTET missing unexpectedly), $PNGFEHL PNG files missing."
+    [ "$ERGEBNIS" -eq 0 ] && ERGEBNIS=2
+fi
 
 ##########################################################################
 # ZIP archive
 ##########################################################################
 
+# C3: ein Archiv ohne ein einziges Symbol wird nicht gebaut; ein vorhandenes
+# bleibt stehen (bis 2.0.10 entstand aus sieben leeren Ordnern ein Archiv,
+# und das Protokoll meldete "ready for downloading").
+if [ "$SVG_DA" -eq 0 ]; then
+    if [ -s "$PDATA/loxone_icons/loxone_icons.zip" ]; then
+        LOGERR "Not a single icon is here (0 of $SOLL). No new archive is built; the existing one stays."
+    else
+        LOGERR "Not a single icon is here (0 of $SOLL). No archive is built."
+    fi
+    exit 1
+fi
+
 if [ $CHANGED -eq 0 ] && [ -s "$PDATA/loxone_icons/loxone_icons.zip" ]; then
     LOGOK "Nothing changed - keeping the existing ZIP archive."
-    exit 0
+    exit $ERGEBNIS
 fi
 
 LOGINF "Creating the ZIP archive for downloading."
@@ -932,6 +1089,10 @@ if [ ! -s "loxone_icons.zip" ]; then
     exit 1
 fi
 mv -f loxone_icons.zip loxone_icons/
-LOGOK "Finished. The archive is ready for downloading."
+if [ "$ERGEBNIS" -eq 0 ]; then
+    LOGOK "Finished. The archive is ready for downloading."
+else
+    LOGWARN "Finished with gaps (see above). The archive holds what is here."
+fi
 
-exit 0
+exit $ERGEBNIS

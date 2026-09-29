@@ -222,7 +222,7 @@ function li_token_erzeugen()
 
 /**
  * Zustand der Konfiguration in dieser Anfrage: ok, neu, zweitschrift, kaputt,
- * ohne_ablage. Die Seite liest die Konfiguration mehrfach; nach einer Heilung
+ * zweitschrift_kaputt, nicht_schreibbar, ohne_ablage. Die Seite liest die Konfiguration mehrfach; nach einer Heilung
  * waere jede weitere Lesung "ok". Behalten wird deshalb der ERSTE Zustand, der
  * nicht "ok" ist - sonst saehe der Reiter Test die Heilung nie.
  */
@@ -265,6 +265,7 @@ function li_config()
         li_config_zustand('ohne_ablage');
         return $vorg;
     }
+    static $schreibfehler_gemeldet = false;
     $roh_da = is_file($p['cfgdatei']);
     $d = li_json_lesen($p['cfgdatei']);
     $zustand = 'ok';
@@ -280,6 +281,19 @@ function li_config()
         } else {
             $d = array();
             $zustand = $roh_da ? 'kaputt' : 'neu';
+            /* U5/I3 (Pruefung 29.09.2026): eine Zweitschrift, die da ist, aber
+               nichts taugt (gekuerzt), wurde bis 2.0.10 still ueberschrieben,
+               und der Tokenverlust hiess im Reiter Test "neu angelegt". Sie
+               wird wie eine kaputte Konfiguration beiseitegelegt. */
+            if ($p['zweitschrift'] !== '' && is_file($p['zweitschrift'])) {
+                $weg = $p['zweitschrift'] . '.kaputt.' . date('Ymd_His');
+                li_log(@rename($p['zweitschrift'], $weg)
+                    ? 'Zweitschrift unbrauchbar - beiseitegelegt als ' . basename($weg) . '.'
+                    : 'Zweitschrift unbrauchbar - liess sich nicht beiseitelegen.');
+                if ($zustand === 'neu') {
+                    $zustand = 'zweitschrift_kaputt';
+                }
+            }
         }
     }
     $cfg = $d;
@@ -291,9 +305,11 @@ function li_config()
         }
     }
     $schreiben = ($zustand !== 'ok') || (bool) $fehlten;
+    $erfunden = false;
     if (!is_string($cfg['aktionstoken']) || $cfg['aktionstoken'] === '') {
         $cfg['aktionstoken'] = li_token_erzeugen();
         $schreiben = true;
+        $erfunden = true;
     }
     if ($schreiben) {
         if ($zustand === 'kaputt') {
@@ -305,13 +321,73 @@ function li_config()
         if ($fehlten && $zustand === 'ok') {
             li_log('Konfiguration ergaenzt: ' . implode(', ', $fehlten));
         }
-        li_config_schreiben($cfg);
+        $erg = li_config_schreiben($cfg);
+        if ($erg === false) {
+            /* U2 (Pruefung 29.09.2026): bis 2.0.10 blieb ein erfundenes Token
+               stehen, obwohl nichts geschrieben war - jeder Aufruf wuerfelte
+               ein neues, jedes Formular wurde mit falscher Begruendung
+               abgewiesen, und der Reiter Test zeigte "neu angelegt". Jetzt
+               kein Token (die Wache weist mit WACHE.KEIN_TOKEN ab). */
+            if ($erfunden) {
+                $cfg['aktionstoken'] = '';
+            }
+            $zustand = 'nicht_schreibbar';
+            if (!$schreibfehler_gemeldet) {
+                $schreibfehler_gemeldet = true;
+                li_log('Konfiguration liess sich nicht schreiben: ' . $p['cfgdatei']);
+            }
+        } elseif ($erg === 'nur_konfig') {
+            li_log('Zweitschrift liess sich nicht schreiben: ' . $p['zweitschrift']);
+        }
     }
     li_config_zustand($zustand);
     return $cfg;
 }
 
-/** Schreibt Konfiguration und Zweitschrift; Rechte 0600 schon beim Anlegen. */
+/**
+ * Schreibt $inhalt vollstaendig in eine Nebendatei <ziel>.tmp.<pid> (0600
+ * schon beim Anlegen) und liest sie zurueck. Rueckgabe der Pfad der
+ * Nebendatei oder false (dann ist sie weg).
+ *
+ * C1 (Pruefung 29.09.2026): bis 2.0.10 galt fwrite() !== false als Erfolg;
+ * bei einer Grenze mitten im Inhalt liefert fwrite() eine kleinere Zahl, und
+ * die gekuerzte Datei ersetzte das Original (gemessen unter PHP 8.3 mit
+ * ulimit -f 1: Konfiguration und Zweitschrift je 1024 Byte, unlesbar).
+ */
+function li_neben_schreiben($ziel, $inhalt)
+{
+    $tmp = $ziel . '.tmp.' . getmypid();
+    $fh = @fopen($tmp, 'c');
+    if ($fh === false) {
+        return false;
+    }
+    @chmod($tmp, 0600);
+    $n = ftruncate($fh, 0) ? @fwrite($fh, $inhalt) : false;
+    $ok = ($n === strlen($inhalt));
+    $ok = @fflush($fh) && $ok;
+    $ok = @fclose($fh) && $ok;
+    if ($ok) {
+        clearstatcache(true, $tmp);
+        $ok = (@file_get_contents($tmp) === $inhalt);
+    }
+    if (!$ok) {
+        @unlink($tmp);
+        return false;
+    }
+    return $tmp;
+}
+
+/**
+ * Schreibt Konfiguration und Zweitschrift; Rechte 0600 schon beim Anlegen.
+ *
+ * Rueckgabe: true (beide geschrieben), 'nur_konfig' (Konfiguration
+ * geschrieben, Zweitschrift nicht) oder false (nichts geschrieben).
+ * Erst entstehen beide Nebendateien vollstaendig und zurueckgelesen, dann
+ * wird umbenannt - die Zweitschrift erst, wenn die Konfiguration an ihrem
+ * Platz ist (C1/U3, Pruefung 29.09.2026: bis 2.0.10 war die Konfiguration
+ * schon umbenannt, wenn die Zweitschrift scheiterte, und die Oberflaeche
+ * meldete "liessen sich nicht schreiben").
+ */
 function li_config_schreiben(array $cfg)
 {
     $p = li_paths();
@@ -332,23 +408,27 @@ function li_config_schreiben(array $cfg)
     if ($json === false) {
         return false;
     }
-    foreach (array($p['cfgdatei'], $p['zweitschrift']) as $ziel) {
-        if ($ziel === '') {
-            continue;
+    $inhalt = $json . "\n";
+    $tmp_cfg = li_neben_schreiben($p['cfgdatei'], $inhalt);
+    if ($tmp_cfg === false) {
+        return false;
+    }
+    $tmp_zweit = ($p['zweitschrift'] === '') ? '' : li_neben_schreiben($p['zweitschrift'], $inhalt);
+    if (!@rename($tmp_cfg, $p['cfgdatei'])) {
+        @unlink($tmp_cfg);
+        if (is_string($tmp_zweit) && $tmp_zweit !== '') {
+            @unlink($tmp_zweit);
         }
-        $tmp = $ziel . '.tmp.' . getmypid();
-        $fh = @fopen($tmp, 'c');
-        if ($fh === false) {
-            return false;
+        return false;
+    }
+    if ($p['zweitschrift'] === '') {
+        return true;
+    }
+    if ($tmp_zweit === false || !@rename($tmp_zweit, $p['zweitschrift'])) {
+        if (is_string($tmp_zweit)) {
+            @unlink($tmp_zweit);
         }
-        @chmod($tmp, 0600);
-        $ok = ftruncate($fh, 0) && fwrite($fh, $json . "\n") !== false;
-        fflush($fh);
-        fclose($fh);
-        if (!$ok || !@rename($tmp, $ziel)) {
-            @unlink($tmp);
-            return false;
-        }
+        return 'nur_konfig';
     }
     return true;
 }
@@ -406,6 +486,70 @@ function li_wachposten()
         return li_t('WACHE.FALSCH');
     }
     return '';
+}
+
+/* ------------------------------------------------------------------ */
+/* Einmalmeldung nach dem POST                                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * U1 (Pruefung 29.09.2026): jeder POST endet mit 303 (Regeln/04); was die
+ * Seite danach zeigen soll, reist in data/plugins/<ordner>/einmalmeldung.json
+ * (0600), wird beim naechsten GET gelesen und geloescht, aelter als 120 s
+ * verworfen. Bauform ak_einmal_*() aus AnkerSolix 0.9.22. Rueckgabe false,
+ * wenn nicht geschrieben - dann zeigt die Seite die Meldung wie bisher direkt.
+ */
+function li_einmal_schreiben(array $meldungen, array $fehler, $gestartet)
+{
+    $p = li_paths();
+    if ($p['home'] === '' || !is_dir($p['data'])) {
+        return false;
+    }
+    $f = $p['data'] . '/einmalmeldung.json';
+    $json = json_encode(array(
+        'zeit'       => time(),
+        'meldungen'  => array_values(array_map('strval', $meldungen)),
+        'fehler'     => array_values(array_map('strval', $fehler)),
+        'gestartet'  => $gestartet ? 1 : 0,
+    ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if ($json === false) {
+        return false;
+    }
+    $tmp = li_neben_schreiben($f, $json);
+    if ($tmp === false) {
+        return false;
+    }
+    if (!@rename($tmp, $f)) {
+        @unlink($tmp);
+        return false;
+    }
+    return true;
+}
+
+/** Liest und loescht die Einmalmeldung; null, wenn keine oder zu alt. */
+function li_einmal_lesen()
+{
+    $p = li_paths();
+    if ($p['home'] === '') {
+        return null;
+    }
+    $f = $p['data'] . '/einmalmeldung.json';
+    if (!is_file($f)) {
+        return null;
+    }
+    $d = json_decode((string) @file_get_contents($f), true);
+    @unlink($f);
+    if (!is_array($d) || !isset($d['zeit']) || abs(time() - (int) $d['zeit']) > 120) {
+        return null;
+    }
+    $liste = function ($x) {
+        return is_array($x) ? array_values(array_map('strval', array_filter($x, 'is_scalar'))) : array();
+    };
+    return array(
+        'meldungen' => $liste(isset($d['meldungen']) ? $d['meldungen'] : null),
+        'fehler'    => $liste(isset($d['fehler']) ? $d['fehler'] : null),
+        'gestartet' => !empty($d['gestartet']),
+    );
 }
 
 /* ------------------------------------------------------------------ */
@@ -627,6 +771,32 @@ function li_svg_zahl()
     return $n;
 }
 
+/**
+ * PNG zu den vorhandenen SVG zaehlen - nur Dateien, kein Inhalt (C3,
+ * Pruefung 29.09.2026: bis 2.0.10 mass keine Zeile des Reiters Test die PNG;
+ * bei scheiterndem rsvg-convert lagen 1102 PNG mit 0 Byte im Archiv, und
+ * alle Zeilen zeigten einen Haken). Rueckgabe array(SVG, davon ohne PNG
+ * oder mit 0 Byte).
+ */
+function li_png_lage()
+{
+    $b = li_paths()['data'] . '/loxone_icons/';
+    $svg = 0;
+    $fehlt = 0;
+    foreach (array('filled', 'outlined') as $art) {
+        $g = glob($b . 'svg/' . $art . '/*.svg');
+        foreach (is_array($g) ? $g : array() as $s) {
+            $svg++;
+            $png = $b . 'png/' . $art . '/' . basename($s, '.svg') . '.png';
+            clearstatcache(true, $png);
+            if (!is_file($png) || filesize($png) === 0) {
+                $fehlt++;
+            }
+        }
+    }
+    return array($svg, $fehlt);
+}
+
 /** Die Symbolliste aus download_icons.sh: array(Anzahl je Ausfuehrung, erste Adresse). */
 function li_symbolliste()
 {
@@ -706,7 +876,9 @@ function li_netzprobe($url)
         @file_put_contents($cache, json_encode(array('zeit' => time(), 'code' => $code)));
     }
     if ($code === 0) {
-        return array(null, li_t('TEST.NETZ_KEINE_ANTWORT'));
+        /* C5 (Pruefung 29.09.2026): das zwischengespeicherte "keine Antwort"
+           stand bis 2.0.10 ohne sein Alter da. */
+        return array(null, li_t('TEST.NETZ_KEINE_ANTWORT') . ' ' . sprintf(li_t('TEST.NETZ_ALTER'), $alter));
     }
     return array($code === 200 ? 1 : 0, sprintf(li_t('TEST.NETZ_CODE'), $code, $url, $alter));
 }
@@ -720,7 +892,7 @@ function li_reiterprobe(array $reiter, $datei)
 {
     $s = (string) @file_get_contents($datei);
     if ($s === '') {
-        return array(null, 'nicht feststellbar - ' . basename($datei) . ' nicht lesbar');
+        return array(null, sprintf(li_t('TEST.DATEI_NICHT_LESBAR'), basename($datei)));
     }
     preg_match_all('/data-ziel="(tab-[a-z0-9]+)"/', $s, $a);
     preg_match_all('/class="sm-seite[^"]*"[^>]*id="(tab-[a-z0-9]+)"/', $s, $b);
@@ -731,11 +903,11 @@ function li_reiterprobe(array $reiter, $datei)
     sort($bereiche);
     sort($soll);
     if (!$soll) {
-        return array(0, 'die Reiterliste ist leer');
+        return array(0, li_t('TEST.REITER_LEER'));
     }
     if ($leiste !== $soll || $bereiche !== $soll) {
-        return array(0, 'Liste ' . implode(',', $soll) . ' / Leiste ' . implode(',', $leiste)
-                      . ' / Bereiche ' . implode(',', $bereiche));
+        return array(0, sprintf(li_t('TEST.REITER_ABWEICHUNG'), implode(',', $soll),
+                      implode(',', $leiste), implode(',', $bereiche)));
     }
     $ohne = array();
     foreach ($soll as $id) {
@@ -746,9 +918,9 @@ function li_reiterprobe(array $reiter, $datei)
         }
     }
     if ($ohne) {
-        return array(0, 'ohne serverseitige Auswahl: ' . implode(', ', $ohne));
+        return array(0, sprintf(li_t('TEST.REITER_OHNE_AUSWAHL'), implode(', ', $ohne)));
     }
-    return array(1, 'ja, alle ' . count($soll) . ' Reiter an Liste, Leiste und Bereichen, serverseitig ausgewaehlt');
+    return array(1, sprintf(li_t('TEST.REITER_JA'), count($soll)));
 }
 
 /** Traegt jedes Formular das Merkmal? */
@@ -756,7 +928,7 @@ function li_formularprobe($datei)
 {
     $s = (string) @file_get_contents($datei);
     if ($s === '') {
-        return array(null, 'nicht feststellbar - ' . basename($datei) . ' nicht lesbar');
+        return array(null, sprintf(li_t('TEST.DATEI_NICHT_LESBAR'), basename($datei)));
     }
     $gesamt = 0;
     $ohne = 0;
@@ -771,10 +943,10 @@ function li_formularprobe($datei)
         }
     }
     if ($gesamt === 0) {
-        return array(0, 'kein Formular gefunden - die Pruefung greift ins Leere');
+        return array(0, li_t('TEST.FORMULARE_KEINS'));
     }
     if ($ohne > 0) {
-        return array(0, 'nein - ' . $ohne . ' von ' . $gesamt . ' ohne Merkmal');
+        return array(0, sprintf(li_t('TEST.FORMULARE_OHNE'), $ohne, $gesamt));
     }
-    return array(1, 'ja, alle ' . $gesamt . ' Formulare');
+    return array(1, sprintf(li_t('TEST.FORMULARE_JA'), $gesamt));
 }

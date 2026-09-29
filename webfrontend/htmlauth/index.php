@@ -5,6 +5,7 @@
  * Reihenfolge ist Bauvorschrift (VORLAGE_hausstandard.css.html):
  *   1. Bibliothek    2. LoxBerry-Rahmen einbinden    3. Konfiguration
  *   4. Wachposten    5. Reiterwahl    6. Handler samt Downloads
+ *   6b. nach jedem POST 303 mit Einmalmeldung
  *   7. erst dann lbheader()    8. HTML
  *
  * Copyright 2023 Michael Schlenstedt (urspruengliches Werk, Apache-2.0);
@@ -63,7 +64,18 @@ if (!$li_post && isset($_GET['ajax']) && $_GET['ajax'] === 'status') {
     exit;
 }
 
+/* U1 (Pruefung 29.09.2026): die Einmalmeldung der vorigen Anfrage - nur beim
+   GET, nach der Zustandsabfrage oben. */
 $li_gestartet = false;
+if (!$li_post) {
+    $li_einmal = li_einmal_lesen();
+    if ($li_einmal !== null) {
+        $li_meldungen = array_merge($li_meldungen, $li_einmal['meldungen']);
+        $li_fehler = array_merge($li_fehler, $li_einmal['fehler']);
+        $li_gestartet = $li_einmal['gestartet'];
+    }
+}
+
 if ($li_post && isset($_POST['nachladen'])) {
     $li_grund = li_starten(false);
     if ($li_grund === '') {
@@ -111,14 +123,35 @@ if ($li_post && isset($_POST['laden'])) {
         list($li_neu, $li_mangel) = li_sicherung_lesen((string) @file_get_contents($_FILES['sicherung']['tmp_name']));
         if ($li_neu === null) {
             $li_fehler[] = li_t('SICH.ABGELEHNT') . ' ' . implode(' ', $li_mangel);
-        } elseif (li_config_schreiben($li_neu)) {
-            $li_cfg = li_config();
-            $li_meldungen[] = li_t('SICH.UEBERNOMMEN');
-            li_log('Einstellungen aus einer Sicherung zurueckgespielt.');
         } else {
-            $li_fehler[] = li_t('SICH.SCHREIBFEHLER');
+            /* U3 (Pruefung 29.09.2026): bis 2.0.10 hiess es "liessen sich
+               nicht schreiben", obwohl die Konfiguration schon das neue Token
+               trug - nur die Zweitschrift war gescheitert. */
+            $li_erg = li_config_schreiben($li_neu);
+            if ($li_erg === true) {
+                $li_cfg = li_config();
+                $li_meldungen[] = li_t('SICH.UEBERNOMMEN');
+                li_log('Einstellungen aus einer Sicherung zurueckgespielt.');
+            } elseif ($li_erg === 'nur_konfig') {
+                $li_cfg = li_config();
+                $li_fehler[] = sprintf(li_t('SICH.NUR_KONFIG'), $li_p['zweitschrift']);
+                li_log('Einstellungen aus einer Sicherung zurueckgespielt - die Zweitschrift liess sich nicht schreiben.');
+            } else {
+                $li_fehler[] = li_t('SICH.SCHREIBFEHLER');
+            }
         }
     }
+}
+
+/* U1 (Pruefung 29.09.2026): jeder POST endet mit 303, auch einer, den der
+   Wachposten abgewiesen hat (Regeln/04). Bis 2.0.10 antwortete jeder POST
+   direkt mit 200; F5 spielte eine Sicherung ein zweites Mal ein. Der Download
+   "Einstellungen sichern" ist oben schon mit exit hinaus. Scheitert das
+   Schreiben der Einmalmeldung, wird wie bisher direkt gerendert - so geht
+   keine Meldung verloren. */
+if ($li_post && li_einmal_schreiben($li_meldungen, $li_fehler, $li_gestartet)) {
+    header('Location: index.php?form=' . rawurlencode(substr($li_tab, 4)), true, 303);
+    exit;
 }
 
 list($li_laeuft, $li_pid) = li_lauf();
@@ -307,7 +340,7 @@ if ($li_rahmen) {
 	<tr><td class="sm-mono">loxone_icons/svg/outlined</td><td><?= li_e(li_t('LOX.SVG_OUTLINED')) ?></td></tr>
 	<tr><td class="sm-mono">loxone_icons/png/filled</td><td><?= li_e(li_t('LOX.PNG_FILLED')) ?></td></tr>
 	<tr><td class="sm-mono">loxone_icons/png/outlined</td><td><?= li_e(li_t('LOX.PNG_OUTLINED')) ?></td></tr>
-	<tr><td class="sm-mono">weather_icons/svg, weather_icons/png/&lt;Farbe&gt;</td><td><?= li_e(li_t('LOX.WETTER')) ?></td></tr>
+	<tr><td class="sm-mono">weather_icons/svg, weather_icons/png/&lt;<?= li_e(li_t('LOX.FARBE')) ?>&gt;</td><td><?= li_e(li_t('LOX.WETTER')) ?></td></tr>
 	<tr><td class="sm-mono">diverse_icons</td><td><?= li_e(li_t('LOX.GEMISCHT')) ?></td></tr>
 </table>
 </div>
@@ -339,7 +372,8 @@ $li_zeilen[] = array(li_t('TEST.FORMULARE'), $li_r[0], $li_r[1]);
 $li_z = li_config_zustand();
 $li_zeilen[] = array(li_t('TEST.KONFIG_HEIL'),
     in_array($li_z, array('ok', 'neu'), true) ? 1 : ($li_z === 'zweitschrift' ? null : 0),
-    li_t('TEST.KONFIG_' . strtoupper($li_z)));
+    $li_z === 'nicht_schreibbar' ? sprintf(li_t('TEST.KONFIG_NICHT_SCHREIBBAR'), $li_p['cfgdatei'])
+                                 : li_t('TEST.KONFIG_' . strtoupper($li_z)));
 
 $li_lage = li_cfg_lage();
 if ($li_lage['fremd']) {
@@ -386,7 +420,8 @@ if ($li_letzter === null) {
     $li_zeilen[] = array(li_t('TEST.LETZTER'), null, li_t('TEST.LETZTER_KEINER'));
 } else {
     $li_zeilen[] = array(li_t('TEST.LETZTER'), (int) $li_letzter['rc'] === 0 ? 1 : 0,
-        sprintf(li_t('TEST.LETZTER_WIE'), date('Y-m-d H:i', (int) $li_letzter['ende']), (int) $li_letzter['rc']));
+        sprintf(li_t('TEST.LETZTER_WIE'), date('Y-m-d H:i', (int) $li_letzter['ende']), (int) $li_letzter['rc'])
+        . ((int) $li_letzter['rc'] === 2 ? ' - ' . li_t('TEST.LETZTER_LUECKE') : ''));
     $li_fehl = $li_letzter['fehlend'];
     if ((int) $li_letzter['soll'] === 0) {
         $li_zeilen[] = array(li_t('TEST.VOLLZAHL'), null, li_t('TEST.VOLLZAHL_OHNE_LISTE'));
@@ -399,6 +434,18 @@ if ($li_letzter === null) {
     } else {
         $li_zeilen[] = array(li_t('TEST.VOLLZAHL'), 1, sprintf(li_t('TEST.VOLLZAHL_WIE'), (int) $li_letzter['vorhanden'], (int) $li_letzter['soll']));
     }
+}
+
+/* C3 (Pruefung 29.09.2026): die PNG selbst zaehlen - bis 2.0.10 mass keine
+   Zeile sie, und leere PNG standen hinter lauter Haken. */
+list($li_svg_n, $li_png_fehlt) = li_png_lage();
+if ($li_laeuft) {
+    $li_zeilen[] = array(li_t('TEST.PNG'), null, li_t('TEST.PNG_LAEUFT'));
+} elseif ($li_svg_n === 0) {
+    $li_zeilen[] = array(li_t('TEST.PNG'), null, li_t('TEST.PNG_KEINE_SVG'));
+} else {
+    $li_zeilen[] = array(li_t('TEST.PNG'), $li_png_fehlt === 0 ? 1 : 0,
+        sprintf(li_t('TEST.PNG_WIE'), $li_svg_n - $li_png_fehlt, $li_svg_n));
 }
 
 $li_n = li_reste();

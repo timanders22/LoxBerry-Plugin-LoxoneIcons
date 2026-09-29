@@ -410,6 +410,55 @@ kommt bei der Installation an. Der Installer kopiert `data/*` rekursiv; der
 Stern lässt nur Punktdateien auf der obersten Ebene von `data/` aus, nicht in
 den Unterordnern. `download_icons.sh` legt die Ordner ohnehin selbst an.
 
+## Fassung 2.0.10 — ein Lauf ohne Symbole ist kein fertiger Lauf
+
+Durchsicht vom 29.09.2026 mit vier Prüfern. Jeder Punkt ist gemessen und hat
+eine Gegenprobe, die an 2.0.9 rot und an 2.0.10 grün ist (WSL, ohne Netz, mit
+Attrappen für `wget`, `rsvg-convert` und den Packer; am Gerät nicht gemessen).
+
+**Der Abruf sagt, was er geschafft hat.** Ohne Netz meldete `download_icons.sh`
+bisher „Finished“ und bot ein Archiv aus null Symbolen an; scheiterte die
+PNG-Umwandlung, lagen 1095 leere PNG im Archiv. Jetzt:
+
+* `download_icons.sh` endet mit 0, wenn alles vollständig ist. Es endet mit 1,
+  wenn der Lauf abgebrochen ist oder kein einziges Symbol ankam, und mit 2,
+  wenn Symbole oder PNG fehlen. Die Zahlen stehen im Protokoll und in
+  `letzter_lauf.json`.
+* Leere PNG kommen nie ins Archiv. Ein Archiv ohne Symbole ersetzt kein
+  vorhandenes.
+* Die sieben umrissenen `awning-*`, die Loxone nicht ausliefert, gelten
+  weiter als erwartet fehlend und machen keinen Lauf rot.
+* Der Reiter Test zählt die PNG selbst und zeigt ein Kreuz, wenn eine fehlt
+  oder der letzte Lauf nicht sauber endete.
+
+**Eine stumme Gegenstelle hält die Installation nicht mehr auf.** Nach 20
+Abrufen in Folge ohne Antwort bricht der Abruf ab. Je Datei gelten
+höchstens 120 s, für den ganzen Abruf 30 Minuten; bisher lief er unbegrenzt.
+
+**Nie zwei Abrufe zugleich.** Zwei gleichzeitige Starts konnten sich
+überlappen, dann wurde jedes Symbol doppelt geholt. Die Sperre ist jetzt
+unteilbar, und ein Lauf löscht nie mehr die Sperre eines anderen.
+
+**Einstellungen und Sicherung:**
+
+* Bei voller Speicherkarte gingen Konfiguration, Zweitschrift und Token
+  verloren; jetzt ist erst geschrieben, was ganz geschrieben ist.
+* Ist die Konfiguration nicht schreibbar, erfindet die Seite kein Token mehr,
+  und der Reiter Test zeigt ein Kreuz mit Pfad statt „neu angelegt“.
+* Eine gekürzte Zweitschrift wird als `.kaputt.<Zeit>` beiseitegelegt und
+  gemeldet, nicht still überschrieben.
+* Nach jedem Absenden wird umgeleitet; F5 wiederholt nichts mehr.
+* Feste deutsche Texte auf der englischen Seite sind übersetzt.
+* Die Netzprobe zeigt das Alter ihres Ergebnisses.
+
+**Installation.** Ein Update legt eine Marke an, und nur mit dieser Marke
+spielt `postinstall.sh` die Zweitschrift zurück. Eine Neuinstallation legt
+Einstellungen und Symbolsicherung einer früheren Installation als `.alt`
+beiseite und sagt es einmal. Bisher übernahm sie das alte Token und hielt
+sich für ein Update, ohne Symbole zu holen. Die Deinstallation räumt `.alt`,
+`.kaputt`, Schreibreste und die Marke ab und prüft danach, ob wirklich
+nichts liegen geblieben ist.
+
 ## Herkunft und Lizenz
 
 Grundlage ist [LoxBerry-Plugin-LoxoneIcons von **Michael Schlenstedt**](https://github.com/mschlenstedt/LoxBerry-Plugin-LoxoneIcons),
