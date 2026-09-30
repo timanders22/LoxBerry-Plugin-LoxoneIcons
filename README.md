@@ -459,6 +459,14 @@ sich für ein Update, ohne Symbole zu holen. Die Deinstallation räumt `.alt`,
 `.kaputt`, Schreibreste und die Marke ab und prüft danach, ob wirklich
 nichts liegen geblieben ist.
 
+## Fassung 2.0.11 — Sammelnachzug curl_close
+
+Sammelnachzug vom 30.09.2026, sonst keine Änderung: `curl_close()` wird nur
+noch unter PHP 7 aufgerufen. Ab PHP 8.0 wirkt der Aufruf nicht mehr, und
+PHP 8.5 meldet ihn zur Laufzeit als veraltet. Bei eingeschalteter
+Fehleranzeige konnte diese Meldung vor einer Antwort an Loxone landen. Am
+LoxBerry mit PHP 7.4 ändert sich nichts.
+
 ## Herkunft und Lizenz
 
 Grundlage ist [LoxBerry-Plugin-LoxoneIcons von **Michael Schlenstedt**](https://github.com/mschlenstedt/LoxBerry-Plugin-LoxoneIcons),

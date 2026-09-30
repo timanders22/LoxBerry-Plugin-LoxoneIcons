@@ -871,7 +871,7 @@ function li_netzprobe($url)
         curl_setopt($ch, CURLOPT_USERAGENT, 'LoxBerry LoxoneIcons NG');
         curl_exec($ch);
         $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+        if (PHP_VERSION_ID < 80000) { curl_close($ch); }
         $alter = 0;
         @file_put_contents($cache, json_encode(array('zeit' => time(), 'code' => $code)));
     }
