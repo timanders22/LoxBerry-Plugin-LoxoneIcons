@@ -143,28 +143,16 @@ if [ "$LI_UPGRADE" = 1 ]; then
 		esac
 	fi
 else
-	# Neuinstallation: Zweitschrift und Symbolsicherung einer frueheren
-	# Installation nach <name>.alt - nicht eingespielt, nicht geloescht - und
-	# EINMAL gemeldet. Ein aelteres .alt wird ersetzt. uninstall raeumt die
-	# .alt ab; li_config() liest nur <ordner>.backup.json, nie die .alt.
-	LI_BEISEITE=""
-	LI_NICHT=""
-	for LI_Q in "$ZWEIT" "$SICHER"; do
-		[ -n "$pluginname" ] || break
-		[ -e "$LI_Q" ] || continue
-		rm -rf "$LI_Q.alt" 2>/dev/null
-		if mv -f "$LI_Q" "$LI_Q.alt" 2>/dev/null && [ ! -e "$LI_Q" ]; then
-			LI_BEISEITE="$LI_BEISEITE $LI_Q.alt"
-		else
-			LI_NICHT="$LI_NICHT $LI_Q"
-		fi
-	done
-	if [ -n "$LI_BEISEITE$LI_NICHT" ]; then
-		echo "<WARNING> Neuinstallation: neben dem Plugin-Ordner lagen Sicherungen einer frueheren"
-		echo "<WARNING> Installation. Sie werden NICHT eingespielt."
-		[ -n "$LI_BEISEITE" ] && echo "<WARNING> Beiseitegelegt:$LI_BEISEITE (die Deinstallation raeumt sie ab)."
-		[ -n "$LI_NICHT" ] && echo "<WARNING> Liess sich nicht beiseitelegen:$LI_NICHT"
-	fi
+	# Neuinstallation (X-1, Verbesserungsbau 01.10.2026): preinstall.sh hat
+	# Zweitschrift und Symbolsicherung einer frueheren Installation schon VOR
+	# dem Kopieren nach <name>.alt gelegt und es einmal gemeldet; uninstall
+	# raeumt die .alt ab, li_config() liest sie nie. Was jetzt neben dem
+	# Plugin-Ordner liegt, hat DIESE Installation geschrieben: ein Seitenaufruf
+	# zwischen Kopieren und postinstall.sh legt Konfiguration und Zweitschrift
+	# an. Bis 2.0.12 legte dieser Zweig auch die beiseite und meldete sie als
+	# Sicherung einer frueheren Installation (in WSL gemessen, Fall X1
+	# NEU_SAUBER). Deshalb geschieht hier nichts mehr.
+	:
 fi
 
 # The web interface serves the archives from ./files, which points at the
@@ -183,7 +171,7 @@ ln -s "$PDATA" "$PHTMLAUTH/files"
 # Die Sicherung liegt seit dieser Fassung unter data/plugins/<Ordner>.upgrade_sicherung
 # und nicht mehr in der Ramdisk; der alte Ort wird noch mitgeprueft.
 # I2: "Upgrade detected" nur mit der Marke - eine liegengebliebene Sicherung
-# ist bei einer Neuinstallation oben schon nach .alt verschoben.
+# ist bei einer Neuinstallation schon von preinstall.sh nach .alt verschoben.
 if [ "$LI_UPGRADE" = 1 ] && { [ -d "${LBPDATA:-$ARGV5/data/plugins}/${ARGV3}.upgrade_sicherung/loxone_icons" ] \
    || [ -d "/tmp/${ARGV1}_upgrade/data/loxone_icons" ]; }; then
 	echo "<INFO> Upgrade detected. The icons already downloaded will be restored,"
@@ -192,33 +180,46 @@ if [ "$LI_UPGRADE" = 1 ] && { [ -d "${LBPDATA:-$ARGV5/data/plugins}/${ARGV3}.upg
 fi
 
 echo "<INFO> Downloading the icons from the Loxone website. This takes a minute or two..."
+# a1 (Verbesserungsbau 01.10.2026): die Zahl wird nach JEDEM Lauf gelesen,
+# nicht nur bei Rueckgabewert 0. Bis 2.0.12 stand bei rc 1 (abgebrochen oder
+# kein einziges Symbol) und rc 2 (Luecken) nur die allgemeine Warnung da, und
+# "kein einziges Symbol (0 von ...)" war seit 2.0.10 nicht mehr erreichbar.
+# Rueckgabewert 0 heisst nur "ohne Abbruch durchgelaufen", nicht "alles da"
+# (bis 2.0.8 stand hier unbedingt "All icons downloaded." - in WSL gemessen
+# 18.09.2026, Pruefung-LoxoneIcons-2.0.8, Fall S1). Gezaehlt wird, was
+# letzter_lauf.json sagt (schreibe_stand()); ein Stand, der aelter ist als
+# dieser Aufruf, stammt nicht aus diesem Lauf und gilt nicht.
+LI_T0=$(date +%s)
 "$PBIN/download_icons.sh"
-if [ $? -ne 0 ]; then
-	echo "<WARNING> Downloading the icons did not finish cleanly. You can start it"
-	echo "<WARNING> again at any time with the button on the plugin's web page."
+LI_RC=$?
+LI_STAND=$(cat "$PDATA/letzter_lauf.json" 2>/dev/null)
+LI_ENDE=$(printf '%s' "$LI_STAND" | sed -n 's/.*"ende":\([0-9][0-9]*\).*/\1/p')
+LI_DA=$(printf '%s' "$LI_STAND" | sed -n 's/.*"vorhanden":\([0-9][0-9]*\).*/\1/p')
+LI_SOLL=$(printf '%s' "$LI_STAND" | sed -n 's/.*"soll":\([0-9][0-9]*\).*/\1/p')
+if [ -n "$LI_ENDE" ] && [ "$LI_ENDE" -lt "$LI_T0" ]; then
+	LI_DA=""
+	LI_SOLL=""
+fi
+if [ "$LI_RC" -ne 0 ]; then
+	echo "<WARNING> Downloading the icons did not finish cleanly (return code $LI_RC)."
+fi
+if [ -z "$LI_DA" ] || [ -z "$LI_SOLL" ]; then
+	echo "<WARNING> Ob Symbole angekommen sind, liess sich nicht feststellen"
+	echo "<WARNING> ($PDATA/letzter_lauf.json fehlt, ist unlesbar oder stammt nicht aus diesem Lauf)."
+elif [ "$LI_DA" -eq 0 ]; then
+	echo "<WARNING> Es ist kein einziges Symbol angekommen (0 von $LI_SOLL)."
+	echo "<WARNING> Internetzugang des LoxBerry pruefen."
+elif [ "$LI_RC" -ne 0 ]; then
+	echo "<WARNING> $LI_DA von $LI_SOLL Symbolen vorhanden. Welche fehlen, nennt der Reiter Test"
+	echo "<WARNING> der Plugin-Oberflaeche."
 else
-	# Rueckgabewert 0 heisst nur "ohne Abbruch durchgelaufen", nicht "alles
-	# da": download_icons.sh meldet fehlende Symbole als Warnung und endet
-	# trotzdem mit 0. Bis 2.0.8 stand hier unbedingt "All icons downloaded." -
-	# in WSL gemessen (18.09.2026, Pruefung-LoxoneIcons-2.0.8, Fall S1): bei
-	# gescheitertem Abruf 0 von 1102 Symbolen und trotzdem diese Zeile.
-	# Gezaehlt wird, was letzter_lauf.json sagt (schreibe_stand()).
-	LI_STAND=$(cat "$PDATA/letzter_lauf.json" 2>/dev/null)
-	LI_DA=$(printf '%s' "$LI_STAND" | sed -n 's/.*"vorhanden":\([0-9][0-9]*\).*/\1/p')
-	LI_SOLL=$(printf '%s' "$LI_STAND" | sed -n 's/.*"soll":\([0-9][0-9]*\).*/\1/p')
-	if [ -z "$LI_DA" ] || [ -z "$LI_SOLL" ]; then
-		echo "<WARNING> Ob Symbole angekommen sind, liess sich nicht feststellen"
-		echo "<WARNING> ($PDATA/letzter_lauf.json fehlt oder ist unlesbar)."
-	elif [ "$LI_DA" -eq 0 ]; then
-		echo "<WARNING> Es ist kein einziges Symbol angekommen (0 von $LI_SOLL)."
-		echo "<WARNING> Internetzugang des LoxBerry pruefen; der Abruf laesst sich"
-		echo "<WARNING> jederzeit ueber die Schaltflaeche in der Plugin-Oberflaeche erneut anstossen."
-	else
-		echo "<OK> $LI_DA von $LI_SOLL Symbolen vorhanden."
-		if [ "$LI_DA" -lt "$LI_SOLL" ]; then
-			echo "<INFO> Welche fehlen, nennt der Reiter Test der Plugin-Oberflaeche."
-		fi
+	echo "<OK> $LI_DA von $LI_SOLL Symbolen vorhanden."
+	if [ "$LI_DA" -lt "$LI_SOLL" ]; then
+		echo "<INFO> Welche fehlen, nennt der Reiter Test der Plugin-Oberflaeche."
 	fi
+fi
+if [ "$LI_RC" -ne 0 ]; then
+	echo "<WARNING> You can start the download again at any time with the button on the plugin's web page."
 fi
 
 # Exit with Status 0

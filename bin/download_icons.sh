@@ -104,10 +104,19 @@ fi
 URLFILLED="https://configurator.loxone.com/files/translations/IconsFilled"
 URLOUTLINED="https://configurator.loxone.com/files/translations/Icons"
 
-SVGFILLED="$PDATA/loxone_icons/svg/filled"
-SVGOUTLINED="$PDATA/loxone_icons/svg/outlined"
-PNGFILLED="$PDATA/loxone_icons/png/filled"
-PNGOUTLINED="$PDATA/loxone_icons/png/outlined"
+# a2 (Verbesserungsbau 01.10.2026): die vier Ordner haengen am Satz, den
+# dieser Lauf bearbeitet. Mit --force ist das zuerst der neue Satz neben dem
+# bisherigen; nach dem Tausch (oder dem Verwerfen) wieder loxone_icons.
+SATZ_HAUPT="$PDATA/loxone_icons"
+FORCE_NEU="$PDATA/loxone_icons.force_neu"
+FORCE_ALT="$PDATA/loxone_icons.force_alt"
+li_satz_pfade() {
+    SVGFILLED="$1/svg/filled"
+    SVGOUTLINED="$1/svg/outlined"
+    PNGFILLED="$1/png/filled"
+    PNGOUTLINED="$1/png/outlined"
+}
+li_satz_pfade "$SATZ_HAUPT"
 LOCK="$PDATA/download.running"
 
 # ---------- Einen Lauf dieses Skriptes argumentweise erkennen ----------
@@ -856,9 +865,50 @@ wrench.svg
 # Download
 ##########################################################################
 
+# a2 (Verbesserungsbau 01.10.2026): Reste eines abgebrochenen --force-Laufs.
+# Die Sperre gehoert jetzt diesem Lauf, ein anderer arbeitet nicht daran.
+if [ -d "$FORCE_ALT" ]; then
+    if [ ! -d "$SATZ_HAUPT" ]; then
+        if mv "$FORCE_ALT" "$SATZ_HAUPT" 2>/dev/null; then
+            LOGWARN "An interrupted forced run had set the previous icon set aside. It has been put back."
+        else
+            LOGERR "An interrupted forced run had set the previous icon set aside ($FORCE_ALT); it could not be put back."
+            exit 1
+        fi
+    else
+        rm -rf "$FORCE_ALT"
+        LOGINF "Removed the previous icon set left behind by an interrupted forced run."
+    fi
+fi
+if [ -d "$FORCE_NEU" ]; then
+    rm -rf "$FORCE_NEU"
+    LOGINF "Removed an unfinished new icon set of an interrupted forced run."
+fi
+
+# Vollstaendige SVG und die nicht leeren PNG dazu in einem Satz: "SVG PNG".
+li_satz_stand() {
+    local n=0 p=0 i
+    for i in "${icons[@]}"; do
+        if vorhanden "$1/svg/filled/$i"; then
+            n=$((n+1)); [ -s "$1/png/filled/${i%.svg}.png" ] && p=$((p+1))
+        fi
+        if vorhanden "$1/svg/outlined/$i"; then
+            n=$((n+1)); [ -s "$1/png/outlined/${i%.svg}.png" ] && p=$((p+1))
+        fi
+    done
+    echo "$n $p"
+}
+
+# Bis 2.0.12 stand hier "rm -rf $PDATA/loxone_icons": scheiterte der
+# Neuabruf, waren Symbole und Archiv weg (Befund A9, 29.09.2026). Jetzt
+# entsteht der neue Satz daneben; der bisherige bleibt samt Archiv stehen und
+# herunterladbar, bis der neue gelungen ist (siehe unten vor dem Archiv).
+ALT_SVG=0
+ALT_PNG=0
 if [ $FORCE -eq 1 ]; then
-    LOGINF "Force mode: removing all icons downloaded so far."
-    rm -rf "$PDATA/loxone_icons"
+    read -r ALT_SVG ALT_PNG <<< "$(li_satz_stand "$SATZ_HAUPT")"
+    LOGINF "Force mode: fetching the whole set anew next to the existing one ($ALT_SVG SVG, $ALT_PNG PNG). The existing set and its archive are replaced only if the new download succeeds."
+    li_satz_pfade "$FORCE_NEU"
 fi
 mkdir -p "$SVGFILLED" "$SVGOUTLINED" "$PNGFILLED" "$PNGOUTLINED"
 
@@ -1051,6 +1101,55 @@ if [ "$UNERWARTET" -gt 0 ] || [ "$PNGFEHL" -gt 0 ]; then
 fi
 
 ##########################################################################
+# a2: --force - der neue Satz ersetzt den bisherigen nur, wenn er gelungen ist
+##########################################################################
+
+# Gibt nach einem gescheiterten Packen den bisherigen Satz zurueck.
+li_force_zurueck() {
+    [ "$FORCE" -eq 1 ] && [ -d "$FORCE_ALT" ] || return 0
+    rm -rf "$SATZ_HAUPT"
+    if mv "$FORCE_ALT" "$SATZ_HAUPT" 2>/dev/null; then
+        LOGERR "The previous icon set and its archive have been put back."
+    else
+        LOGERR "The previous icon set could not be put back; it lies in $FORCE_ALT."
+    fi
+    li_satz_pfade "$SATZ_HAUPT"
+}
+
+if [ $FORCE -eq 1 ]; then
+    read -r NEU_SVG NEU_PNG <<< "$(li_satz_stand "$FORCE_NEU")"
+    GELUNGEN=0
+    if [ -z "$ABBRUCH" ] && [ "$SVG_DA" -gt 0 ]; then
+        if [ "$ERGEBNIS" -eq 0 ] \
+           || { [ "$NEU_SVG" -ge "$ALT_SVG" ] && [ "$NEU_PNG" -ge "$ALT_PNG" ]; }; then
+            GELUNGEN=1
+        fi
+    fi
+    if [ "$GELUNGEN" -eq 0 ]; then
+        rm -rf "$FORCE_NEU"
+        li_satz_pfade "$SATZ_HAUPT"
+        LOGERR "The forced download did not succeed (new set: $NEU_SVG SVG and $NEU_PNG PNG of $SOLL, previous set: $ALT_SVG SVG and $ALT_PNG PNG). The new set was discarded; the previous set and its archive are unchanged."
+        exit 1
+    fi
+    if [ -d "$SATZ_HAUPT" ] && ! mv "$SATZ_HAUPT" "$FORCE_ALT" 2>/dev/null; then
+        rm -rf "$FORCE_NEU"
+        li_satz_pfade "$SATZ_HAUPT"
+        LOGERR "The previous icon set could not be set aside. Nothing was replaced."
+        exit 1
+    fi
+    if ! mv "$FORCE_NEU" "$SATZ_HAUPT" 2>/dev/null; then
+        [ -d "$FORCE_ALT" ] && mv "$FORCE_ALT" "$SATZ_HAUPT" 2>/dev/null
+        rm -rf "$FORCE_NEU"
+        li_satz_pfade "$SATZ_HAUPT"
+        LOGERR "The new icon set could not be moved into place. The previous set stays."
+        exit 1
+    fi
+    li_satz_pfade "$SATZ_HAUPT"
+    CHANGED=1
+    LOGOK "The new set replaces the previous one ($NEU_SVG SVG and $NEU_PNG PNG, previously $ALT_SVG and $ALT_PNG)."
+fi
+
+##########################################################################
 # ZIP archive
 ##########################################################################
 
@@ -1081,14 +1180,21 @@ elif command -v zip >/dev/null 2>&1; then
     zip -q -r loxone_icons.zip loxone_icons >> ${FILENAME} 2>&1
 else
     LOGERR "Neither 7z nor zip found. Cannot create the archive."
+    li_force_zurueck
     exit 1
 fi
 
 if [ ! -s "loxone_icons.zip" ]; then
     LOGERR "Creating the ZIP archive failed."
+    rm -f loxone_icons.zip
+    li_force_zurueck
     exit 1
 fi
 mv -f loxone_icons.zip loxone_icons/
+# a2: erst jetzt, mit dem neuen Archiv an seinem Platz, faellt der bisherige Satz.
+if [ "$FORCE" -eq 1 ] && [ -d "$FORCE_ALT" ]; then
+    rm -rf "$FORCE_ALT"
+fi
 if [ "$ERGEBNIS" -eq 0 ]; then
     LOGOK "Finished. The archive is ready for downloading."
 else

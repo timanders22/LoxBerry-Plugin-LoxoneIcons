@@ -176,6 +176,48 @@ function li_log($text)
     @file_put_contents($f, date('Y-m-d H:i:s') . ' ' . $text . "\n", FILE_APPEND);
 }
 
+/**
+ * b1 (Verbesserungsbau 01.10.2026): "Konfiguration liess sich nicht
+ * schreiben" hoechstens einmal je Stunde. Bis 2.0.12 schrieb jeder
+ * Seitenaufruf - auch jede Zustandsabfrage der Fortschrittsanzeige - eine
+ * Zeile. Der Merker <log>/oberflaeche.schreibfehler traegt "<zeit>
+ * <unterdrueckt>"; innerhalb einer Stunde wird nur gezaehlt, und die naechste
+ * Zeile nennt die Zahl. Ein Merker aus der Zukunft (Uhrsprung) zaehlt nicht.
+ */
+function li_schreibfehler_melden($datei)
+{
+    $p = li_paths();
+    if ($p['log'] === '') {
+        return;
+    }
+    $m = $p['log'] . '/oberflaeche.schreibfehler';
+    $jetzt = time();
+    $zeit = 0;
+    $still = 0;
+    $roh = @file_get_contents($m);
+    if (is_string($roh) && preg_match('/^([0-9]+) ([0-9]+)\s*\z/', $roh, $t) === 1) {
+        $zeit = (int) $t[1];
+        $still = (int) $t[2];
+    }
+    if ($zeit > 0 && $jetzt >= $zeit && $jetzt - $zeit < 3600) {
+        @file_put_contents($m, $zeit . ' ' . ($still + 1) . "\n", LOCK_EX);
+        return;
+    }
+    li_log('Konfiguration liess sich nicht schreiben: ' . $datei
+        . ($still > 0 ? ' (dazu ' . $still . ' weitere Seitenaufrufe seit der letzten Zeile)' : '')
+        . ' - die naechste Zeile fruehestens in einer Stunde.');
+    @file_put_contents($m, $jetzt . " 0\n", LOCK_EX);
+}
+
+/** b1: die Konfiguration ist wieder geschrieben - ein neuer Fehler wird sofort gemeldet. */
+function li_schreibfehler_vorbei()
+{
+    $p = li_paths();
+    if ($p['log'] !== '' && is_file($p['log'] . '/oberflaeche.schreibfehler')) {
+        @unlink($p['log'] . '/oberflaeche.schreibfehler');
+    }
+}
+
 /* ------------------------------------------------------------------ */
 /* Konfiguration                                                       */
 /* ------------------------------------------------------------------ */
@@ -334,7 +376,7 @@ function li_config()
             $zustand = 'nicht_schreibbar';
             if (!$schreibfehler_gemeldet) {
                 $schreibfehler_gemeldet = true;
-                li_log('Konfiguration liess sich nicht schreiben: ' . $p['cfgdatei']);
+                li_schreibfehler_melden($p['cfgdatei']);
             }
         } elseif ($erg === 'nur_konfig') {
             li_log('Zweitschrift liess sich nicht schreiben: ' . $p['zweitschrift']);
@@ -421,6 +463,7 @@ function li_config_schreiben(array $cfg)
         }
         return false;
     }
+    li_schreibfehler_vorbei();
     if ($p['zweitschrift'] === '') {
         return true;
     }
@@ -499,7 +542,7 @@ function li_wachposten()
  * verworfen. Bauform ak_einmal_*() aus AnkerSolix 0.9.22. Rueckgabe false,
  * wenn nicht geschrieben - dann zeigt die Seite die Meldung wie bisher direkt.
  */
-function li_einmal_schreiben(array $meldungen, array $fehler, $gestartet)
+function li_einmal_schreiben(array $meldungen, array $fehler, $gestartet, $eingaben = null)
 {
     $p = li_paths();
     if ($p['home'] === '' || !is_dir($p['data'])) {
@@ -511,6 +554,7 @@ function li_einmal_schreiben(array $meldungen, array $fehler, $gestartet)
         'meldungen'  => array_values(array_map('strval', $meldungen)),
         'fehler'     => array_values(array_map('strval', $fehler)),
         'gestartet'  => $gestartet ? 1 : 0,
+        'eingaben'   => li_eingaben_lesen($eingaben),
     ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     if ($json === false) {
         return false;
@@ -549,7 +593,73 @@ function li_einmal_lesen()
         'meldungen' => $liste(isset($d['meldungen']) ? $d['meldungen'] : null),
         'fehler'    => $liste(isset($d['fehler']) ? $d['fehler'] : null),
         'gestartet' => !empty($d['gestartet']),
+        'eingaben'  => li_eingaben_lesen(isset($d['eingaben']) ? $d['eingaben'] : null),
     );
+}
+
+/* ------------------------------------------------------------------ */
+/* Eingaben nach einer Beanstandung (X-2)                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * X-2 (Verbesserungsbau 01.10.2026, Regeln/04 "Nach einer Beanstandung
+ * stehen die eingetippten Werte wieder im Formular"): die Felder je Formular.
+ * 'werte' = Felder, deren Eingabe zurueckreist; 'marken' = Felder, die
+ * markiert werden koennen. Das Dateifeld der Sicherung wird nur markiert:
+ * ein Browser laesst es nicht vorbelegen, und die Datei traegt das
+ * Aktionstoken (nie Geheimnisse).
+ */
+function li_eingaben_felder($formular)
+{
+    $felder = array(
+        'alles_neu' => array('werte' => array('bestaetigt'), 'marken' => array('bestaetigt')),
+        'laden'     => array('werte' => array(),             'marken' => array('sicherung')),
+    );
+    return isset($felder[$formular]) ? $felder[$formular] : null;
+}
+
+/** Die Eingaben eines beanstandeten Formulars fuer die Einmalmeldung.
+ *  Ein Wert, der keine Zeichenkette ist (etwa bestaetigt[]=1), reist leer. */
+function li_eingaben_merken($formular, array $werte, array $falsch)
+{
+    $f = li_eingaben_felder($formular);
+    if ($f === null) {
+        return null;
+    }
+    $aus = array();
+    foreach ($f['werte'] as $k) {
+        $aus[$k] = (isset($werte[$k]) && is_string($werte[$k])) ? $werte[$k] : '';
+    }
+    return array('formular' => $formular, 'werte' => $aus,
+                 'falsch'   => array_values(array_intersect($f['marken'], $falsch)));
+}
+
+/** Die Eingaben aus der Einmalmeldung - nur bekannte Formulare und Felder,
+ *  nur Zeichenketten. null, wenn nichts Brauchbares darin steht. */
+function li_eingaben_lesen($e)
+{
+    if (!is_array($e) || !isset($e['formular']) || !is_string($e['formular'])) {
+        return null;
+    }
+    $f = li_eingaben_felder($e['formular']);
+    if ($f === null) {
+        return null;
+    }
+    $werte = array();
+    foreach ($f['werte'] as $k) {
+        if (isset($e['werte'][$k]) && is_string($e['werte'][$k])) {
+            $werte[$k] = $e['werte'][$k];
+        }
+    }
+    $falsch = array();
+    if (isset($e['falsch']) && is_array($e['falsch'])) {
+        foreach ($e['falsch'] as $k) {
+            if (is_string($k) && in_array($k, $f['marken'], true)) {
+                $falsch[] = $k;
+            }
+        }
+    }
+    return array('formular' => $e['formular'], 'werte' => $werte, 'falsch' => $falsch);
 }
 
 /* ------------------------------------------------------------------ */
@@ -567,11 +677,46 @@ function li_sicherung_bauen()
     foreach (array_keys(li_vorgaben()) as $k) {
         $aus[$k] = $cfg[$k];
     }
+    /* X-3 (Verbesserungsbau 01.10.2026): Wuerde das eigene Zurueckspielen
+       diese Datei abweisen, sagt es der Kopf - nur die Schluesselnamen, nie
+       die Werte. Geliefert wird trotzdem. */
+    $maengel = li_sicherung_eigene_maengel($cfg);
+    if ($maengel) {
+        $aus = array_merge(array('_warnung' => sprintf(li_t('SICH.KOPF_WARNUNG'), implode(', ', $maengel))), $aus);
+    }
     return $aus;
 }
 
 /**
- * Eine Sicherung lesen. Rueckgabe array(Konfiguration|null, Beanstandungen[]).
+ * X-3 (Verbesserungsbau 01.10.2026, Bauform APC-UPS 1.2.17 / KODI-NG U3):
+ * Bestuende die eigene Sicherung das Zurueckspielen? Geprueft wird mit
+ * li_sicherung_lesen() - derselben Funktion wie beim Zurueckspielen, nicht
+ * mit einer zweiten Regel. Rueckgabe: die beanstandeten Schluessel, leer =
+ * besteht. $cfg null = die aktuelle Konfiguration.
+ */
+function li_sicherung_eigene_maengel($cfg = null)
+{
+    if (!is_array($cfg)) {
+        $cfg = li_config();
+    }
+    $werte = array();
+    foreach (array_keys(li_vorgaben()) as $k) {
+        $werte[$k] = array_key_exists($k, $cfg) ? $cfg[$k] : null;
+    }
+    $js = json_encode($werte, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if ($js === false) {
+        return array('?');
+    }
+    $r = array_pad(li_sicherung_lesen($js), 3, array());
+    if ($r[0] !== null) {
+        return array();
+    }
+    return $r[2] ? array_values($r[2]) : array('?');
+}
+
+/**
+ * Eine Sicherung lesen. Rueckgabe array(Konfiguration|null, Beanstandungen[],
+ * beanstandete Schluessel[]) - den dritten Wert braucht "Sichern" (X-3).
  * Eine halb gueltige Datei aendert gar nichts; alle Beanstandungen werden
  * gesammelt. Schluessel mit '_' am Anfang sind der lesbare Kopf.
  */
@@ -582,6 +727,7 @@ function li_sicherung_lesen($roh)
         return array(null, array(li_t('SICH.KEIN_JSON')));
     }
     $mangel = array();
+    $schluessel = array();
     $neu = li_vorgaben();
     foreach ($daten as $k => $w) {
         $k = (string) $k;
@@ -590,10 +736,12 @@ function li_sicherung_lesen($roh)
         }
         if (!array_key_exists($k, $neu)) {
             $mangel[] = sprintf(li_t('SICH.FREMD'), $k);
+            $schluessel[] = $k;
             continue;
         }
         if (!li_wert_pruefen($k, $w) || $w === '') {
             $mangel[] = sprintf(li_t('SICH.WERT'), $k);
+            $schluessel[] = $k;
             continue;
         }
         $neu[$k] = $w;
@@ -602,12 +750,13 @@ function li_sicherung_lesen($roh)
     foreach (array_keys(li_vorgaben()) as $k) {
         if (!array_key_exists($k, $daten)) {
             $fehlend[] = $k;
+            $schluessel[] = $k;
         }
     }
     if ($fehlend) {
         $mangel[] = sprintf(li_t('SICH.FEHLEND'), implode(', ', $fehlend));
     }
-    return array($mangel ? null : $neu, $mangel);
+    return array($mangel ? null : $neu, $mangel, $schluessel);
 }
 
 /* ------------------------------------------------------------------ */
@@ -759,10 +908,17 @@ function li_letzter_lauf()
     return $d;
 }
 
-/** Schnelle Zaehlung fuer die Fortschrittsanzeige - nur Dateien, kein Inhalt. */
-function li_svg_zahl()
+/**
+ * Schnelle Zaehlung fuer die Fortschrittsanzeige - nur Dateien, kein Inhalt.
+ * a2 (Verbesserungsbau 01.10.2026): waehrend eines Laufs mit --force entsteht
+ * der neue Satz neben dem bisherigen (loxone_icons.force_neu); gezaehlt wird
+ * dann dort, sonst stuende die Kachel bis zum Tausch auf der alten Zahl.
+ */
+function li_svg_zahl($laeuft = false)
 {
-    $b = li_paths()['data'] . '/loxone_icons/svg/';
+    $d = li_paths()['data'];
+    $b = ($laeuft && is_dir($d . '/loxone_icons.force_neu/svg'))
+        ? $d . '/loxone_icons.force_neu/svg/' : $d . '/loxone_icons/svg/';
     $n = 0;
     foreach (array('filled', 'outlined') as $art) {
         $g = glob($b . $art . '/*.svg');

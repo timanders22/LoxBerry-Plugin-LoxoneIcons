@@ -59,7 +59,11 @@ Von der Kommandozeile geht dasselbe wie mit den Knöpfen:
 <LoxBerry-Wurzel>/bin/plugins/loxoneicons/download_icons.sh [--force]
 ```
 
-Ohne `--force` wird nur geholt, was fehlt oder unvollständig ist. Das Ergebnis
+Ohne `--force` wird nur geholt, was fehlt oder unvollständig ist. Mit
+`--force` entsteht der ganze Satz neu neben dem bisherigen; der bisherige
+Satz und sein Archiv werden erst ersetzt, wenn der neue Abruf gelungen ist
+(vollständig oder mit mindestens so vielen Symbolen und PNG wie bisher),
+sonst bleiben sie unverändert. Das Ergebnis
 jedes Laufs steht in `data/plugins/loxoneicons/letzter_lauf.json`; der Reiter
 Test liest es.
 
@@ -466,6 +470,25 @@ noch unter PHP 7 aufgerufen. Ab PHP 8.0 wirkt der Aufruf nicht mehr, und
 PHP 8.5 meldet ihn zur Laufzeit als veraltet. Bei eingeschalteter
 Fehleranzeige konnte diese Meldung vor einer Antwort an Loxone landen. Am
 LoxBerry mit PHP 7.4 ändert sich nichts.
+
+## Fassung 2.0.12
+
+Welle 4 der Verbesserungsliste (`Pruefung-Durchgang-2026-09-29/VERBESSERUNGEN_OFFEN.md`).
+Gemessen mit Attrappen unter PHP 7.4, 8.3 und 8.5; nicht am Gerät.
+
+* **Symbolzahl nach jeder Installation:** `postinstall.sh` nennt nach dem Abruf
+  die Zahl der geholten Symbole, auch bei Abbruch oder Lücke (z. B. „1000 von
+  1102“, „kein einziges Symbol“); ein Stand aus einem früheren Lauf gilt nicht.
+* **„Alles neu laden“ (`--force`) ist sicher:** Satz und Archiv werden erst nach
+  einem gelungenen Neuabruf ersetzt. Ohne Netz, bei einer Lücke oder wenn das
+  Packen scheitert, bleibt alles, wie es war.
+* Bei nicht schreibbarer Konfiguration steht höchstens eine Protokollzeile je
+  Stunde im Protokoll.
+* **Neuinstallation:** Neues `preinstall.sh`; ein Seitenaufruf während der
+  Installation holt kein altes Token mehr zurück und löst keine falsche Warnung
+  „frühere Installation“ mehr aus.
+* Beanstandete Felder sind markiert; „Einstellungen sichern“ warnt, wenn die
+  Sicherung beim Zurückspielen abgewiesen würde.
 
 ## Herkunft und Lizenz
 

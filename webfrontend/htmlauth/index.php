@@ -30,6 +30,31 @@ $li_rahmen = class_exists('LBWeb', false);
 $li_cfg = li_config();
 $li_meldungen = array();
 $li_fehler = array();
+// X-2: die Eingaben eines beanstandeten Formulars (null = keine).
+$li_eingaben = null;
+
+/** X-2: der Wert eines Feldes - nach einer Beanstandung DIESES Formulars der
+ *  eingegebene, sonst die Vorgabe. */
+function li_fwert($formular, $k, $sonst)
+{
+    global $li_eingaben;
+    if (is_array($li_eingaben) && $li_eingaben['formular'] === $formular
+        && array_key_exists($k, $li_eingaben['werte'])) {
+        return $li_eingaben['werte'][$k];
+    }
+    return (string) $sonst;
+}
+
+/** X-2: Merkmal eines beanstandeten Feldes (roter Rahmen, aria-invalid). */
+function li_fmark($formular, $k)
+{
+    global $li_eingaben;
+    if (is_array($li_eingaben) && $li_eingaben['formular'] === $formular
+        && in_array($k, $li_eingaben['falsch'], true)) {
+        return ' class="sm-beanstandet" aria-invalid="true"';
+    }
+    return '';
+}
 
 /* ---------- 4. Wachposten ---------- */
 $li_wache = li_wachposten();
@@ -60,7 +85,7 @@ if (!$li_post && isset($_GET['ajax']) && $_GET['ajax'] === 'status') {
     list($li_laeuft, $li_pid) = li_lauf();
     header('Content-Type: application/json; charset=utf-8');
     header('Cache-Control: no-store');
-    echo json_encode(array('laeuft' => $li_laeuft ? 1 : 0, 'svg' => li_svg_zahl()));
+    echo json_encode(array('laeuft' => $li_laeuft ? 1 : 0, 'svg' => li_svg_zahl($li_laeuft)));
     exit;
 }
 
@@ -73,6 +98,8 @@ if (!$li_post) {
         $li_meldungen = array_merge($li_meldungen, $li_einmal['meldungen']);
         $li_fehler = array_merge($li_fehler, $li_einmal['fehler']);
         $li_gestartet = $li_einmal['gestartet'];
+        // X-2: nur nach einer Beanstandung - nach Erfolg reist nichts mit.
+        $li_eingaben = $li_einmal['eingaben'];
     }
 }
 
@@ -89,6 +116,7 @@ if ($li_post && isset($_POST['nachladen'])) {
 if ($li_post && isset($_POST['alles_neu'])) {
     if (empty($_POST['bestaetigt'])) {
         $li_fehler[] = li_t('START.OHNE_HAKEN');
+        $li_eingaben = li_eingaben_merken('alles_neu', $_POST, array('bestaetigt'));
     } else {
         $li_grund = li_starten(true);
         if ($li_grund === '') {
@@ -117,12 +145,15 @@ if ($li_post && isset($_POST['laden'])) {
     if (!isset($_FILES['sicherung']['tmp_name']) || !is_string($_FILES['sicherung']['tmp_name'])
         || !@is_uploaded_file($_FILES['sicherung']['tmp_name'])) {
         $li_fehler[] = li_t('SICH.KEINE_DATEI');
+        $li_eingaben = li_eingaben_merken('laden', array(), array('sicherung'));
     } elseif ((int) $_FILES['sicherung']['size'] > 65536) {
         $li_fehler[] = li_t('SICH.ZU_GROSS');
+        $li_eingaben = li_eingaben_merken('laden', array(), array('sicherung'));
     } else {
         list($li_neu, $li_mangel) = li_sicherung_lesen((string) @file_get_contents($_FILES['sicherung']['tmp_name']));
         if ($li_neu === null) {
             $li_fehler[] = li_t('SICH.ABGELEHNT') . ' ' . implode(' ', $li_mangel);
+            $li_eingaben = li_eingaben_merken('laden', array(), array('sicherung'));
         } else {
             /* U3 (Pruefung 29.09.2026): bis 2.0.10 hiess es "liessen sich
                nicht schreiben", obwohl die Konfiguration schon das neue Token
@@ -149,7 +180,7 @@ if ($li_post && isset($_POST['laden'])) {
    "Einstellungen sichern" ist oben schon mit exit hinaus. Scheitert das
    Schreiben der Einmalmeldung, wird wie bisher direkt gerendert - so geht
    keine Meldung verloren. */
-if ($li_post && li_einmal_schreiben($li_meldungen, $li_fehler, $li_gestartet)) {
+if ($li_post && li_einmal_schreiben($li_meldungen, $li_fehler, $li_gestartet, $li_eingaben)) {
     header('Location: index.php?form=' . rawurlencode(substr($li_tab, 4)), true, 303);
     exit;
 }
@@ -242,6 +273,9 @@ if ($li_rahmen) {
     padding-right: 32px; cursor: pointer; }
 .sm-tbl select { padding-right: 28px; background-position: right 7px center; }
 .sm-grau { color: #777; }
+/* Ergaenzung (X-2): ein beanstandetes Feld nach der Umleitung. */
+.sm-wrap input.sm-beanstandet { border: 2px solid #b00000 !important; background: #fff4f4;
+    outline: 2px solid #b00000; outline-offset: 1px; }
 </style>
 
 <div class="sm-wrap">
@@ -289,7 +323,7 @@ if ($li_rahmen) {
 
 <h2><?= li_e(li_t('EINST.H_ABRUF')) ?></h2>
 <div class="sm-kacheln">
-	<div class="sm-kachel"><b id="li-svg"><?= (int) li_svg_zahl() ?></b><span><?= li_e(sprintf(li_t('EINST.KACHEL_SVG'), $li_listenzahl * 2)) ?></span></div>
+	<div class="sm-kachel"><b id="li-svg"><?= (int) li_svg_zahl($li_laeuft) ?></b><span><?= li_e(sprintf(li_t('EINST.KACHEL_SVG'), $li_listenzahl * 2)) ?></span></div>
 	<div class="sm-kachel"><b id="li-lauf"><?= $li_laeuft ? li_e(li_t('EINST.LAEUFT')) : li_e(li_t('EINST.RUHT')) ?></b><span><?= li_e(li_t('EINST.KACHEL_LAUF')) ?></span></div>
 	<div class="sm-kachel"><b><?= $li_letzter === null ? '&mdash;' : li_e(date('Y-m-d H:i', (int) $li_letzter['ende'])) ?></b><span><?= li_e(li_t('EINST.KACHEL_LETZTER')) ?></span></div>
 </div>
@@ -304,7 +338,7 @@ if ($li_rahmen) {
 	<form action="index.php" method="post">
 		<?php echo li_fmt(); ?>
 		<input data-role="none" type="hidden" name="activetab" value="tab-settings">
-		<label class="sm-hilfe"><input data-role="none" type="checkbox" name="bestaetigt" value="1"> <?= li_e(li_t('EINST.HAKEN_ALLES')) ?></label>
+		<label class="sm-hilfe"><input data-role="none" type="checkbox" name="bestaetigt" value="1"<?= li_fwert('alles_neu', 'bestaetigt', '') === '1' ? ' checked' : '' ?><?= li_fmark('alles_neu', 'bestaetigt') ?>> <?= li_e(li_t('EINST.HAKEN_ALLES')) ?></label>
 		<button data-role="none" class="sm-btn sm-b-aktion" type="submit" name="alles_neu" value="1"<?= $li_laeuft ? ' disabled' : '' ?>><?= li_e(li_t('EINST.K_ALLES_NEU')) ?></button>
 	</form>
 </div>
@@ -313,6 +347,15 @@ if ($li_rahmen) {
 <h2><?= li_e(li_t('EINST.H_SICHERUNG')) ?></h2>
 <div class="sm-hinweis"><?= li_t('EINST.SICH_ERKLAERUNG') ?></div>
 <div class="sm-warnung"><?= li_t('EINST.SICH_WARNUNG') ?></div>
+<?php
+/* X-3 (Verbesserungsbau 01.10.2026): Bestuende die eigene Sicherung das
+   Zurueckspielen nicht, steht es hier - geprueft mit li_sicherung_lesen(),
+   derselben Funktion wie beim Zurueckspielen. Genannt werden die
+   Einstellungen, nicht ihre Werte. */
+$li_sich_mangel = li_sicherung_eigene_maengel();
+if ($li_sich_mangel) { ?>
+<div class="sm-warnung" id="li-sicherung-warnung"><?= li_e(sprintf(li_t('SICH.EIGEN_WARNUNG'), implode(', ', $li_sich_mangel))) ?></div>
+<?php } ?>
 <div class="sm-knopfreihe">
 	<form action="index.php" method="post">
 		<?php echo li_fmt(); ?>
@@ -322,7 +365,7 @@ if ($li_rahmen) {
 	<form action="index.php" method="post" enctype="multipart/form-data">
 		<?php echo li_fmt(); ?>
 		<input data-role="none" type="hidden" name="activetab" value="tab-settings">
-		<input data-role="none" type="file" name="sicherung" accept=".json">
+		<input data-role="none" type="file" name="sicherung" accept=".json"<?= li_fmark('laden', 'sicherung') ?>>
 		<button data-role="none" class="sm-btn sm-b-aktion" type="submit" name="laden" value="1"><?= li_e(li_t('EINST.K_ZURUECK')) ?></button>
 	</form>
 </div>
