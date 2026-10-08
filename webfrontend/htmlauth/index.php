@@ -283,6 +283,23 @@ if ($li_rahmen) {
 <?php foreach ($li_meldungen as $li_m) { ?><div class="sm-hinweis"><?= li_e($li_m) ?></div><?php } ?>
 <?php foreach ($li_fehler as $li_m) { ?><div class="sm-warnung"><?= li_e($li_m) ?></div><?php } ?>
 
+<?php /* Kopf (Entscheidung Nr. 43, seit 2.0.13): Statusuebersicht ueber den
+   Reitern, immer sichtbar. Hierher gewandert aus dem Reiter Einstellungen,
+   wo bis 2.0.12 drei Kacheln standen. Die Kennungen li-svg und li-lauf
+   beschreibt die Fortschrittsanzeige unten. Nur Werte, die oben schon
+   gelesen sind - kein Abruf bei Loxone. */ ?>
+<table class="sm-tbl" style="max-width:620px">
+<tr><th><?= li_e(li_t('EINST.KOPF_EIGENSCHAFT')) ?></th><th><?= li_e(li_t('EINST.KOPF_WERT')) ?></th></tr>
+<tr><td><?= li_e(li_t('EINST.KOPF_DIENST')) ?></td>
+    <td><?= li_e(li_t('EINST.KOPF_OHNE_DIENST')) ?></td></tr>
+<tr><td><?= li_e(li_t('EINST.KACHEL_LAUF')) ?></td>
+    <td><span id="li-lauf"><?= $li_laeuft ? li_e(li_t('EINST.LAEUFT')) : li_e(li_t('EINST.RUHT')) ?></span><?= $li_laeuft ? ' (PID ' . (int) $li_pid . ')' : '' ?></td></tr>
+<tr><td><?= li_e(sprintf(li_t('EINST.KACHEL_SVG'), $li_listenzahl * 2)) ?></td>
+    <td><span id="li-svg"><?= (int) li_svg_zahl($li_laeuft) ?></span></td></tr>
+<tr><td><?= li_e(li_t('EINST.KACHEL_LETZTER')) ?></td>
+    <td><?= $li_letzter === null ? '&mdash;' : li_e(date('Y-m-d H:i', (int) $li_letzter['ende'])) ?></td></tr>
+</table>
+
 <div class="sm-tabs">
 	<a class="sm-tab<?= $li_tab === 'tab-settings' ? ' sm-active' : '' ?>" data-ziel="tab-settings"
 	   href="index.php?form=settings"><?= li_e(li_t('REITER.EINSTELLUNGEN')) ?></a>
@@ -296,6 +313,7 @@ if ($li_rahmen) {
 
 <!-- ================= Einstellungen ================= -->
 <div class="sm-seite<?= $li_tab === 'tab-settings' ? ' sm-active' : '' ?>" id="tab-settings">
+<div class="sm-hinweis"><?= li_t('EINST.WAS_IST_DAS') ?></div>
 
 <div class="sm-legende">
 	<span><i class="sm-punkt sm-b-lesen"></i> <?= li_e(li_t('LEGENDE.LESEN')) ?></span>
@@ -322,11 +340,8 @@ if ($li_rahmen) {
 </table>
 
 <h2><?= li_e(li_t('EINST.H_ABRUF')) ?></h2>
-<div class="sm-kacheln">
-	<div class="sm-kachel"><b id="li-svg"><?= (int) li_svg_zahl($li_laeuft) ?></b><span><?= li_e(sprintf(li_t('EINST.KACHEL_SVG'), $li_listenzahl * 2)) ?></span></div>
-	<div class="sm-kachel"><b id="li-lauf"><?= $li_laeuft ? li_e(li_t('EINST.LAEUFT')) : li_e(li_t('EINST.RUHT')) ?></b><span><?= li_e(li_t('EINST.KACHEL_LAUF')) ?></span></div>
-	<div class="sm-kachel"><b><?= $li_letzter === null ? '&mdash;' : li_e(date('Y-m-d H:i', (int) $li_letzter['ende'])) ?></b><span><?= li_e(li_t('EINST.KACHEL_LETZTER')) ?></span></div>
-</div>
+<?php /* Die Kacheln SVG-Zahl, Abruf und letzter Lauf stehen seit 2.0.13 in der
+   Statusuebersicht ueber den Reitern (Entscheidung Nr. 43). */ ?>
 <p class="sm-hilfe"><?= li_t('EINST.ABRUF_HILFE') ?></p>
 
 <div class="sm-knopfreihe">

@@ -10,6 +10,17 @@ LoxoneIcons NG ist eine eigenständig weitergeführte Abspaltung von
 und Verhalten vom Original abweichen. Die interne Kennung bleibt `loxoneicons`
 — bestehende Installationen werden wie bisher aktualisiert.
 
+## Neu in 2.0.13
+
+Kopf wie alle Hausplugins: Statusübersicht über den Reitern, Zusammenfassung oben im ersten Reiter.
+
+* **Statusübersicht über den Reitern** als Tabelle: Dienst (das Plugin hat keinen), Abruf (läuft mit
+  Prozessnummer / ruht), Zahl der vorhandenen SVG-Dateien und Ende des letzten Laufs. Sie ersetzt die drei
+  Kacheln, die bisher im Reiter Einstellungen unter „Abruf von Loxone“ standen; die Fortschrittsanzeige
+  während eines Abrufs schreibt jetzt in diese Tabelle.
+* **Zusammenfassung** des Plugins in einem grünen Kasten oben im Reiter Einstellungen.
+* Nur Oberfläche; gerendert unter PHP 7.4, 8.4 und 8.5, nicht am Gerät angesehen.
+
 ## Was das Plugin tut
 
 * Es lädt alle Symbole von `configurator.loxone.com`, gefüllt und umrissen,
