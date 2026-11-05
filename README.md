@@ -10,6 +10,10 @@ LoxoneIcons NG ist eine eigenständig weitergeführte Abspaltung von
 und Verhalten vom Original abweichen. Die interne Kennung bleibt `loxoneicons`
 — bestehende Installationen werden wie bisher aktualisiert.
 
+## Neu in 2.0.14
+
+- Vor einem Download wird jeder offene Ausgabepuffer geleert: PHP-Warnungen oder Reste landen nicht mehr in der heruntergeladenen Datei.
+
 ## Neu in 2.0.13
 
 Kopf wie alle Hausplugins: Statusübersicht über den Reitern, Zusammenfassung oben im ersten Reiter.

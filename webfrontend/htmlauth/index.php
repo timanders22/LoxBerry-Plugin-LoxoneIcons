@@ -132,6 +132,7 @@ if ($li_post && isset($_POST['alles_neu'])) {
 if ($li_post && isset($_POST['sichern'])) {
     $li_js = json_encode(li_sicherung_bauen(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     if ($li_js !== false) {
+        while (ob_get_level() > 0) { @ob_end_clean(); }
         header('Content-Type: application/json; charset=utf-8');
         header('Content-Disposition: attachment; filename="loxoneicons_einstellungen_' . date('Ymd_His') . '.json"');
         echo $li_js . "\n";
