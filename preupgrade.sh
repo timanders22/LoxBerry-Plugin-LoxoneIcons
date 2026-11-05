@@ -6,6 +6,10 @@ ARGV5=$5   # Wurzelverzeichnis des LoxBerry
 
 BASE="${ARGV5:-$LBHOMEDIR}"
 PDIR="${ARGV3:-loxoneicons}"
+# 05.11.2026: ein Ordnername mit "/" oder "." waere ein Pfad hinaus (dieselbe Formel wie MGiSmart und Govee).
+case "$PDIR" in
+    ''|.|..|*/*) echo "<FAIL> Unbrauchbarer Ordnername '$PDIR' - nichts angefasst."; exit 2 ;;
+esac
 
 # ---------- Zuerst die Marke "Aktualisierung laeuft" (I1) ----------
 #
@@ -21,9 +25,10 @@ if [ -n "$BASE" ] && mkdir -p "$BASE/data/plugins" 2>/dev/null \
     echo "<OK> Aktualisierung angemeldet ($MARKE)."
 else
     [ -n "$BASE" ] && rm -f "$MARKE" 2>/dev/null
-    echo "<WARNING> Die Marke $MARKE liess sich nicht anlegen. postinstall.sh behandelt"
-    echo "<WARNING> den Vorgang dann wie eine Neuinstallation: Zweitschrift der Konfiguration"
-    echo "<WARNING> und Symbolsicherung werden beiseitegelegt, nicht eingespielt."
+    # 05.11.2026: ohne Marke haelt die Installation das Update fuer eine Neuinstallation und legt die Einstellungen beiseite; bis hierher nur eine Warnung.
+    echo "<FAIL> Die Marke $MARKE liess sich nicht anlegen - die Aktualisierung wird abgebrochen,"
+    echo "<FAIL> die bisherige Fassung bleibt unveraendert installiert."
+    exit 2
 fi
 
 # Der heruntergeladene Iconsatz wird VERSCHOBEN, nicht nach /tmp kopiert.
