@@ -1173,13 +1173,32 @@ fi
 LOGINF "Creating the ZIP archive for downloading."
 cd "$PDATA" || exit 1
 # The old archive lives inside the folder we are about to pack.
-rm -f loxone_icons/loxone_icons.zip loxone_icons.zip
+# 2.0.16: Bis 2.0.15 wurde es hier geloescht, bevor das neue gebaut war. Scheiterte das Packen
+# (oder fehlten 7z und zip), war ohne --force gar kein Archiv mehr da (Nachtpruefung 12.11.2026,
+# gemessen mit einem 7z, das abbricht). Jetzt liegt es waehrend des Packens als loxone_icons.zip.alt
+# neben dem Ordner und faellt erst, wenn das neue an seinem Platz ist; sonst kommt es zurueck. Liegt
+# von einem abgebrochenen Lauf noch eines beiseite und fehlt das Archiv, kommt es zuerst zurueck.
+if [ -f loxone_icons.zip.alt ] && [ ! -f loxone_icons/loxone_icons.zip ]; then
+    mv -f loxone_icons.zip.alt loxone_icons/loxone_icons.zip 2>/dev/null
+fi
+rm -f loxone_icons.zip loxone_icons.zip.alt
+if [ -f loxone_icons/loxone_icons.zip ] && ! mv -f loxone_icons/loxone_icons.zip loxone_icons.zip.alt 2>/dev/null; then
+    LOGERR "The existing archive could not be set aside. Nothing was replaced."
+    li_force_zurueck
+    exit 1
+fi
+li_archiv_zurueck() {
+    if [ -f loxone_icons.zip.alt ] && mv -f loxone_icons.zip.alt loxone_icons/loxone_icons.zip 2>/dev/null; then
+        LOGERR "The previous archive stays."
+    fi
+}
 if command -v 7z >/dev/null 2>&1; then
-    7z a -bd -bso0 loxone_icons.zip loxone_icons >> ${FILENAME} 2>&1
+    7z a -bd -bso0 loxone_icons.zip loxone_icons >> "${FILENAME}" 2>&1
 elif command -v zip >/dev/null 2>&1; then
-    zip -q -r loxone_icons.zip loxone_icons >> ${FILENAME} 2>&1
+    zip -q -r loxone_icons.zip loxone_icons >> "${FILENAME}" 2>&1
 else
     LOGERR "Neither 7z nor zip found. Cannot create the archive."
+    li_archiv_zurueck
     li_force_zurueck
     exit 1
 fi
@@ -1187,10 +1206,18 @@ fi
 if [ ! -s "loxone_icons.zip" ]; then
     LOGERR "Creating the ZIP archive failed."
     rm -f loxone_icons.zip
+    li_archiv_zurueck
     li_force_zurueck
     exit 1
 fi
-mv -f loxone_icons.zip loxone_icons/
+if ! mv -f loxone_icons.zip loxone_icons/; then
+    LOGERR "The new archive could not be moved into place."
+    rm -f loxone_icons.zip
+    li_archiv_zurueck
+    li_force_zurueck
+    exit 1
+fi
+rm -f loxone_icons.zip.alt
 # a2: erst jetzt, mit dem neuen Archiv an seinem Platz, faellt der bisherige Satz.
 if [ "$FORCE" -eq 1 ] && [ -d "$FORCE_ALT" ]; then
     rm -rf "$FORCE_ALT"

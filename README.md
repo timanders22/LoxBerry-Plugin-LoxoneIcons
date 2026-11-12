@@ -10,6 +10,16 @@ LoxoneIcons NG ist eine eigenständig weitergeführte Abspaltung von
 und Verhalten vom Original abweichen. Die interne Kennung bleibt `loxoneicons`
 — bestehende Installationen werden wie bisher aktualisiert.
 
+## Neu in 2.0.16
+
+- **Archiv:** Scheitert das Packen des Archivs (oder fehlen 7z und zip), bleibt das bisherige
+  `loxone_icons.zip` zum Herunterladen stehen. Bis 2.0.15 wurde es ohne „Alles neu laden“ schon vor dem
+  Packen gelöscht. Während des Packens liegt es als `loxone_icons.zip.alt` neben dem Ordner; ein Rest
+  davon aus einem abgebrochenen Lauf kommt beim nächsten Lauf zurück.
+- **Webordner:** `/plugins/loxoneicons/` antwortet mit HTTP 403 statt mit einer Verzeichnisliste.
+- Gemessen am Prüfstand (Abschnitt des Skripts mit einem 7z, das scheitert) und unter PHP 7.4, 8.4 und 8.5;
+  nicht am Gerät.
+
 ## Neu in 2.0.15
 
 - **Update:** Scheitert die Sicherung oder die Marke, bricht das Update ab und die bisherige Fassung bleibt.
