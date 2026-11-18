@@ -15,6 +15,10 @@
  * Aenderungen: LoxoneIcons Plugin Authors, siehe NOTICE.
  */
 
+/* 2.0.17: Gemeinsames Sicherungsmodul (Abschrift von Werkzeuge/gemeinsam/sicherung.php, Regeln/05).
+ * Liegt neben dieser Datei und schuetzt sich gegen doppeltes Laden. */
+require_once __DIR__ . '/sicherung.php';
+
 /* ------------------------------------------------------------------ */
 /* Pfade                                                               */
 /* ------------------------------------------------------------------ */
@@ -666,97 +670,91 @@ function li_eingaben_lesen($e)
 /* Sichern und zurueckspielen                                          */
 /* ------------------------------------------------------------------ */
 
-/** Die Sicherung - aus den Vorgaben gesiebt, mit lesbarem Kopf. */
-function li_sicherung_bauen()
+/*
+ * 2.0.17: Sichern und Zurueckspielen laufen ueber das gemeinsame
+ * Sicherungsmodul (Abschrift von Werkzeuge/gemeinsam/sicherung.php neben
+ * dieser Datei, Regeln/05; Auftrag des Hausherrn 18.11.2026). Diese Linie
+ * uebergibt nur ihre Beschreibung (li_sicherung_beschreibung()). Bis 2.0.16
+ * stand hier ein eigener Weg (li_sicherung_lesen()): ein unbekannter
+ * Schluessel und ein leeres Aktionstoken wiesen die ganze Datei ab, ein
+ * Kennzeichen gab es nicht.
+ */
+
+/**
+ * Die Beschreibung dieser Linie fuer das gemeinsame Sicherungsmodul. Die
+ * Linie hat genau eine Einstellung, das Aktionstoken; jede Sicherung seit
+ * 2.0.5 traegt es (gemessen 18.11.2026 an li_sicherung_bauen() der Archive
+ * 2.0.5 bis 2.0.16), es bleibt deshalb Pflicht.
+ */
+function li_sicherung_beschreibung()
 {
-    $cfg = li_config();
-    $aus = array(
-        '_hinweis' => 'LoxoneIcons NG - Einstellungen. Enthaelt das Aktionstoken der Anlage: wie ein Passwort behandeln.',
-        '_stand'   => date('Y-m-d H:i'),
+    $p = li_paths();
+    return array(
+        'kennzeichen' => 'LoxBerry-Plugin-LoxoneIcons',
+        'hinweis'     => 'Sicherung des LoxBerry-Plugins LoxoneIcons NG. Enthaelt das Aktionstoken der Anlage - '
+                       . 'wie ein Passwort behandeln.',
+        /* Die Fassung im Kopf kommt aus der Plugin-Datenbank bzw. der plugin.cfg, nie als Zahl im Code. */
+        'home'        => (string) $p['home'],
+        'ordner'      => (string) $p['plugin'],
+        'plugin_cfg'  => dirname(dirname(__DIR__)) . '/plugin.cfg',
+        'vorgaben'    => li_vorgaben(),
+        'pruefen'     => function ($k, $w) {
+            return li_wert_pruefen($k, $w) ? '' : sprintf(li_t('SICHERUNG.K_WERT'), $k);
+        },
+        'warnung'     => 'li_sicherung_warnung',
+        'uebersetzer' => 'li_sicherung_alt_erkennen',
+        't'           => 'li_t',
+        'e'           => 'li_e',
     );
-    foreach (array_keys(li_vorgaben()) as $k) {
-        $aus[$k] = $cfg[$k];
-    }
-    /* X-3 (Verbesserungsbau 01.10.2026): Wuerde das eigene Zurueckspielen
-       diese Datei abweisen, sagt es der Kopf - nur die Schluesselnamen, nie
-       die Werte. Geliefert wird trotzdem. */
-    $maengel = li_sicherung_eigene_maengel($cfg);
-    if ($maengel) {
-        $aus = array_merge(array('_warnung' => sprintf(li_t('SICH.KOPF_WARNUNG'), implode(', ', $maengel))), $aus);
-    }
-    return $aus;
 }
 
 /**
- * X-3 (Verbesserungsbau 01.10.2026, Bauform APC-UPS 1.2.17 / KODI-NG U3):
- * Bestuende die eigene Sicherung das Zurueckspielen? Geprueft wird mit
- * li_sicherung_lesen() - derselben Funktion wie beim Zurueckspielen, nicht
- * mit einer zweiten Regel. Rueckgabe: die beanstandeten Schluessel, leer =
- * besteht. $cfg null = die aktuelle Konfiguration.
+ * Eine Sicherung dieser Linie aus der Zeit vor dem Kennzeichen _plugin (2.0.5
+ * bis 2.0.16) traegt den lesbaren Kopf _hinweis, den nur der Sichern-Knopf
+ * dieser Linie schrieb: "LoxoneIcons NG - Einstellungen. ..." (gemessen
+ * 18.11.2026 an allen Archiven 2.0.5 bis 2.0.16; 2.0.4 und frueher hatten
+ * keine Sicherung). Daran wird sie erkannt; sonst null.
+ */
+function li_sicherung_alt_erkennen($d)
+{
+    return (is_array($d) && isset($d['_hinweis']) && is_string($d['_hinweis'])
+            && strpos($d['_hinweis'], 'LoxoneIcons NG - Einstellungen.') === 0) ? $d : null;
+}
+
+/**
+ * X-3 (seit 01.10.2026): Ein leeres Aktionstoken bringt beim Zurueckspielen
+ * keines mit - das Modul laesst dann das geltende stehen. Der Kopf sagt es,
+ * nur mit dem Namen, nie mit einem Wert.
+ */
+function li_sicherung_warnung($cfg)
+{
+    $t = (is_array($cfg) && isset($cfg['aktionstoken'])) ? $cfg['aktionstoken'] : '';
+    return (is_string($t) && $t !== '') ? array() : array(sprintf(li_t('SICH.KOPF_LEER'), 'aktionstoken'));
+}
+
+/** Die Sicherung als Feld: Kopf und Inhalt baut das gemeinsame Modul. */
+function li_sicherung_bauen()
+{
+    return sicherung_bauen(li_sicherung_beschreibung(), li_config());
+}
+
+/**
+ * X-3: Waere die eigene Sicherung beim Zurueckspielen abgewiesen oder
+ * wertlos? Geprueft mit derselben Funktion wie beim Zurueckspielen
+ * (sicherung_selbstpruefung()); dazu ein leeres Aktionstoken. Rueckgabe:
+ * die Namen, leer = in Ordnung. $cfg null = die aktuelle Konfiguration.
  */
 function li_sicherung_eigene_maengel($cfg = null)
 {
     if (!is_array($cfg)) {
         $cfg = li_config();
     }
-    $werte = array();
-    foreach (array_keys(li_vorgaben()) as $k) {
-        $werte[$k] = array_key_exists($k, $cfg) ? $cfg[$k] : null;
+    $b = li_sicherung_beschreibung();
+    $namen = sicherung_selbstpruefung($b, sicherung_bauen($b, $cfg), $cfg);
+    if (li_sicherung_warnung($cfg)) {
+        $namen[] = 'aktionstoken';
     }
-    $js = json_encode($werte, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    if ($js === false) {
-        return array('?');
-    }
-    $r = array_pad(li_sicherung_lesen($js), 3, array());
-    if ($r[0] !== null) {
-        return array();
-    }
-    return $r[2] ? array_values($r[2]) : array('?');
-}
-
-/**
- * Eine Sicherung lesen. Rueckgabe array(Konfiguration|null, Beanstandungen[],
- * beanstandete Schluessel[]) - den dritten Wert braucht "Sichern" (X-3).
- * Eine halb gueltige Datei aendert gar nichts; alle Beanstandungen werden
- * gesammelt. Schluessel mit '_' am Anfang sind der lesbare Kopf.
- */
-function li_sicherung_lesen($roh)
-{
-    $daten = json_decode((string) $roh, true);
-    if (!is_array($daten)) {
-        return array(null, array(li_t('SICH.KEIN_JSON')));
-    }
-    $mangel = array();
-    $schluessel = array();
-    $neu = li_vorgaben();
-    foreach ($daten as $k => $w) {
-        $k = (string) $k;
-        if ($k !== '' && $k[0] === '_') {
-            continue;
-        }
-        if (!array_key_exists($k, $neu)) {
-            $mangel[] = sprintf(li_t('SICH.FREMD'), $k);
-            $schluessel[] = $k;
-            continue;
-        }
-        if (!li_wert_pruefen($k, $w) || $w === '') {
-            $mangel[] = sprintf(li_t('SICH.WERT'), $k);
-            $schluessel[] = $k;
-            continue;
-        }
-        $neu[$k] = $w;
-    }
-    $fehlend = array();
-    foreach (array_keys(li_vorgaben()) as $k) {
-        if (!array_key_exists($k, $daten)) {
-            $fehlend[] = $k;
-            $schluessel[] = $k;
-        }
-    }
-    if ($fehlend) {
-        $mangel[] = sprintf(li_t('SICH.FEHLEND'), implode(', ', $fehlend));
-    }
-    return array($mangel ? null : $neu, $mangel, $schluessel);
+    return sicherung_einmal($namen);
 }
 
 /* ------------------------------------------------------------------ */

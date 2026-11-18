@@ -128,10 +128,11 @@ if ($li_post && isset($_POST['alles_neu'])) {
     }
 }
 
-/* Einstellungen sichern - ein Download, deshalb vor lbheader(). */
+/* Einstellungen sichern - ein Download, deshalb vor lbheader(). Seit 2.0.17
+   baut das gemeinsame Sicherungsmodul Kopf und Inhalt (li_sicherung_bauen()). */
 if ($li_post && isset($_POST['sichern'])) {
-    $li_js = json_encode(li_sicherung_bauen(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-    if ($li_js !== false) {
+    $li_js = sicherung_json(li_sicherung_bauen());
+    if ($li_js !== '') {
         while (ob_get_level() > 0) { @ob_end_clean(); }
         header('Content-Type: application/json; charset=utf-8');
         header('Content-Disposition: attachment; filename="loxoneicons_einstellungen_' . date('Ymd_His') . '.json"');
@@ -141,36 +142,42 @@ if ($li_post && isset($_POST['sichern'])) {
     $li_fehler[] = li_t('SICH.SCHREIBFEHLER');
 }
 
-/* Einstellungen zurueckspielen. is_uploaded_file() zuerst, dann die Groesse. */
+/* Einstellungen zurueckspielen. Seit 2.0.17 ueber das gemeinsame
+   Sicherungsmodul, in jeder Linie gleich: sicherung_eingang() prueft zuerst den
+   Haken zurueck_ok (ohne ihn wird nichts gelesen und nichts geaendert), dann
+   is_uploaded_file() und die Groessengrenze; sicherung_zurueckspielen() liest,
+   prueft, speichert (Konfiguration samt Zweitschrift) und misst die
+   Zweitschrift nach. Eine halb gueltige Datei aendert gar nichts. Die Seite
+   maskiert ihre Meldungen selbst (li_e()); das Modul gibt sie deshalb als
+   Klartext ('e', Regeln/05 "Meldungen als Klartext"). */
 if ($li_post && isset($_POST['laden'])) {
-    if (!isset($_FILES['sicherung']['tmp_name']) || !is_string($_FILES['sicherung']['tmp_name'])
-        || !@is_uploaded_file($_FILES['sicherung']['tmp_name'])) {
-        $li_fehler[] = li_t('SICH.KEINE_DATEI');
-        $li_eingaben = li_eingaben_merken('laden', array(), array('sicherung'));
-    } elseif ((int) $_FILES['sicherung']['size'] > 65536) {
-        $li_fehler[] = li_t('SICH.ZU_GROSS');
+    $li_b = li_sicherung_beschreibung();
+    $li_klar = function ($s) { return $s; };
+    list($li_roh, $li_ab) = sicherung_eingang($li_b, $_POST, $_FILES, 'sicherung');
+    if ($li_ab !== null) {
+        $li_m = sicherung_meldungen(array('e' => $li_klar) + $li_b, $li_ab);
+        $li_fehler = array_merge($li_fehler, $li_m['fehler']);
         $li_eingaben = li_eingaben_merken('laden', array(), array('sicherung'));
     } else {
-        list($li_neu, $li_mangel) = li_sicherung_lesen((string) @file_get_contents($_FILES['sicherung']['tmp_name']));
-        if ($li_neu === null) {
-            $li_fehler[] = li_t('SICH.ABGELEHNT') . ' ' . implode(' ', $li_mangel);
-            $li_eingaben = li_eingaben_merken('laden', array(), array('sicherung'));
+        $li_b['jetzt'] = function () { return li_config(); };
+        /* Gespeichert wird genau der Stand, den das Modul liefert. 'nur_konfig'
+           (Zweitschrift gescheitert) zaehlt als gespeichert; das Modul misst die
+           Zweitschrift danach und meldet die Abweichung. */
+        $li_b['speichern'] = function ($neu) { return li_config_schreiben($neu) !== false; };
+        $li_b['zweitschrift'] = function () {
+            $p = li_paths();
+            return array($p['cfgdatei'], $p['zweitschrift']);
+        };
+        $li_b['nachziehen'] = function () { return array(li_t('SICH.KEIN_DIENST')); };
+        $li_b['log'] = function ($z) { li_log($z); };
+        $li_r = sicherung_zurueckspielen($li_b, $li_roh);
+        $li_m = sicherung_meldungen(array('e' => $li_klar) + $li_b, $li_r);
+        $li_fehler = array_merge($li_fehler, $li_m['fehler']);
+        $li_meldungen = array_merge($li_meldungen, $li_m['hinweise']);
+        if ($li_r['gespeichert']) {
+            $li_cfg = li_config();
         } else {
-            /* U3 (Pruefung 29.09.2026): bis 2.0.10 hiess es "liessen sich
-               nicht schreiben", obwohl die Konfiguration schon das neue Token
-               trug - nur die Zweitschrift war gescheitert. */
-            $li_erg = li_config_schreiben($li_neu);
-            if ($li_erg === true) {
-                $li_cfg = li_config();
-                $li_meldungen[] = li_t('SICH.UEBERNOMMEN');
-                li_log('Einstellungen aus einer Sicherung zurueckgespielt.');
-            } elseif ($li_erg === 'nur_konfig') {
-                $li_cfg = li_config();
-                $li_fehler[] = sprintf(li_t('SICH.NUR_KONFIG'), $li_p['zweitschrift']);
-                li_log('Einstellungen aus einer Sicherung zurueckgespielt - die Zweitschrift liess sich nicht schreiben.');
-            } else {
-                $li_fehler[] = li_t('SICH.SCHREIBFEHLER');
-            }
+            $li_eingaben = li_eingaben_merken('laden', array(), array('sicherung'));
         }
     }
 }
@@ -365,8 +372,8 @@ if ($li_rahmen) {
 <div class="sm-warnung"><?= li_t('EINST.SICH_WARNUNG') ?></div>
 <?php
 /* X-3 (Verbesserungsbau 01.10.2026): Bestuende die eigene Sicherung das
-   Zurueckspielen nicht, steht es hier - geprueft mit li_sicherung_lesen(),
-   derselben Funktion wie beim Zurueckspielen. Genannt werden die
+   Zurueckspielen nicht, steht es hier - geprueft mit sicherung_selbstpruefung()
+   des Moduls, derselben Pruefung wie beim Zurueckspielen. Genannt werden die
    Einstellungen, nicht ihre Werte. */
 $li_sich_mangel = li_sicherung_eigene_maengel();
 if ($li_sich_mangel) { ?>
@@ -382,6 +389,7 @@ if ($li_sich_mangel) { ?>
 		<?php echo li_fmt(); ?>
 		<input data-role="none" type="hidden" name="activetab" value="tab-settings">
 		<input data-role="none" type="file" name="sicherung" accept=".json"<?= li_fmark('laden', 'sicherung') ?>>
+		<?= sicherung_haken_zeile(li_sicherung_beschreibung()) ?>
 		<button data-role="none" class="sm-btn sm-b-aktion" type="submit" name="laden" value="1"><?= li_e(li_t('EINST.K_ZURUECK')) ?></button>
 	</form>
 </div>

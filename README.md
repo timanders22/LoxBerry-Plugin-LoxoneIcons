@@ -10,6 +10,37 @@ LoxoneIcons NG ist eine eigenständig weitergeführte Abspaltung von
 und Verhalten vom Original abweichen. Die interne Kennung bleibt `loxoneicons`
 — bestehende Installationen werden wie bisher aktualisiert.
 
+## Neu in 2.0.17
+
+- **Verhalten geändert – Einstellungen sichern und zurückspielen nach der gemeinsamen Vorlage:** Die Knöpfe im
+  Reiter *Einstellungen* arbeiten jetzt mit demselben Sicherungsmodul (1.2.11) wie die übrigen Plugins dieser Reihe.
+  Für den Anwender ändert sich:
+  - Die Sicherungsdatei trägt im Kopf das Kennzeichen des Plugins (`_plugin`) und die Fassung (`_fassung`). Eine
+    Datei eines anderen Plugins und eine Datei ohne Kennzeichen werden als Ganzes abgewiesen; es ändert sich dann
+    nichts. Sicherungen dieses Plugins von 2.0.5 bis 2.0.16 tragen noch kein Kennzeichen; sie werden an ihrem Kopf
+    `_hinweis` erkannt und weiter angenommen, und die Meldung sagt das. Fassungen bis 2.0.4 hatten keine Sicherung.
+  - Eine Einstellung, die diese Fassung nicht kennt, wird nicht übernommen und mit ihrem Namen gemeldet, nie mit
+    ihrem Wert; das Aktionstoken wird trotzdem zurückgespielt. Bis 2.0.16 wies ein unbekannter Name die ganze Datei
+    ab. Einträge der geltenden Einstellungen, die diese Fassung nicht kennt (etwa aus einer Bearbeitung von Hand),
+    fallen beim Zurückspielen weg und werden ebenfalls mit Namen genannt.
+  - Ein leeres Aktionstoken in der Sicherung überschreibt das geltende nicht; es bleibt stehen, und die Meldung nennt
+    den Namen. Bis 2.0.16 wurde eine solche Datei abgewiesen. Fehlt das Aktionstoken ganz oder ist es ungültig, wird
+    die Datei wie bisher abgewiesen und es ändert sich nichts.
+  - Eine Sicherungsdatei darf jetzt bis 256 KB groß sein (bisher 64 KB), wie in allen Plugins dieser Reihe; eine
+    Datei mit einer unsichtbaren Markierung am Anfang (UTF-8-BOM) wird gelesen wie ohne sie.
+- **Verhalten geändert – Zurückspielen nur mit Haken:** Zwischen dem Feld für die Sicherungsdatei und dem Knopf
+  „Einstellungen zurückspielen“ steht ein Haken „Ja, die geltenden Einstellungen durch die Sicherung ersetzen“, ab
+  Werk aus. Ohne ihn wird die Datei nicht gelesen und nichts geändert, und die Meldung sagt es. Haken, Text und die
+  Prüfung der hochgeladenen Datei kommen aus dem gemeinsamen Sicherungsmodul und sind in allen Plugins dieser Reihe
+  gleich.
+- **Meldung nach dem Zurückspielen:** Sie nennt die Zahl der übernommenen Werte. Die Zweitschrift neben dem
+  Konfigordner wird danach nachgemessen; weicht sie ab, sagt die Meldung es.
+- **Knopf „Dokumentation“:** `plugin.cfg` nennt jetzt `WEBSITE=` mit diesem Repository; LoxBerry übernimmt die
+  Adresse bei der Installation und zeigt sie in der Plugin-Verwaltung als Knopf.
+- Gemessen mit dem Prüfstand auf dem Arbeitsrechner unter PHP 7.4 und 8.4, der über einen Webserver die echten
+  Knöpfe drückt und die Sicherungen von 2.0.16, 2.0.10 und 2.0.5 zurückspielt; am Gerät nicht gemessen.
+- **Sicherungsmodul 1.2.11:** Wandelt ein Plugin beim Zurückspielen eine Sicherung aus einer Textdatei um, sagt die Meldung das jetzt mit einem gemeinsamen Satz, und Mängel darin werden in allen Plugins mit denselben Bezeichnungen genannt. Dieses Plugin wandelt keine Textdateien um; an seinem Verhalten ändert sich dadurch nichts. Gemessen mit dem Prüfstand auf dem Arbeitsrechner unter PHP 7.4 und 8.4. Am Gerät nicht gemessen.
+
 ## Neu in 2.0.16
 
 - **Archiv:** Scheitert das Packen des Archivs (oder fehlen 7z und zip), bleibt das bisherige
