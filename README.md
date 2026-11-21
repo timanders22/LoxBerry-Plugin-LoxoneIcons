@@ -10,6 +10,10 @@ LoxoneIcons NG ist eine eigenständig weitergeführte Abspaltung von
 und Verhalten vom Original abweichen. Die interne Kennung bleibt `loxoneicons`
 — bestehende Installationen werden wie bisher aktualisiert.
 
+## Neu in 2.0.18
+
+- Die Kopfzeile zeigt jetzt die installierte Fassung in derselben Form wie alle Plugins (bisher mit vorangestelltem „V“).
+
 ## Neu in 2.0.17
 
 - **Verhalten geändert – Einstellungen sichern und zurückspielen nach der gemeinsamen Vorlage:** Die Knöpfe im

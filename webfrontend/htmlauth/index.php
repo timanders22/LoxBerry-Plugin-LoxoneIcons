@@ -201,18 +201,8 @@ list($li_listenzahl, $li_probe_url) = li_symbolliste();
 /* ---------- 7. Rahmen ---------- */
 if ($li_rahmen) {
     $li_titel = li_t('ALLGEMEIN.TITEL');
-    if (class_exists('LBSystem', false) && method_exists('LBSystem', 'pluginversion')) {
-        /* Ueber den Ordnernamen fragen (Regeln/03): ohne Argument haengt die
-         * Antwort am ersten eingebundenen Skript - am Geraet gemessen
-         * 17.09.2026: aus einem fremden Einstieg (php -r) NULL, mit dem
-         * Ordnernamen die installierte Fassung. Installiert liegt diese Datei
-         * unter webfrontend/html(auth)/plugins/<ordner>/. */
-        $li_fassung = (string) LBSystem::pluginversion(basename(__DIR__));
-        if ($li_fassung !== '') {
-            $li_titel .= ' V' . $li_fassung;
-        }
-    }
-    LBWeb::lbheader($li_titel, 'https://wiki.loxberry.de/plugins/loxoneicons/start', 'help.html');
+    require_once __DIR__ . '/fassung.php';   // Fassung im Titel: gemeinsames Stueck fassung.php (21.11.2026)
+    LBWeb::lbheader(plugin_kopftitel($li_titel, __DIR__), 'https://wiki.loxberry.de/plugins/loxoneicons/start', 'help.html');
 }
 ?>
 <style>
