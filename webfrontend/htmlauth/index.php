@@ -188,6 +188,30 @@ if ($li_post && isset($_POST['laden'])) {
    "Einstellungen sichern" ist oben schon mit exit hinaus. Scheitert das
    Schreiben der Einmalmeldung, wird wie bisher direkt gerendert - so geht
    keine Meldung verloren. */
+/* 2.0.19: Lade-Beanstandungen - angezeigte Werte uebernehmen, nur mit Haken (Entscheidung des Hausherrn 24.11.2026,
+   "Haken im gelben Kasten"); ohne ihn bleibt die Datei byte-gleich. li_config_schreiben() schreibt nur ein formgueltiges
+   Token (fail closed) - ein formwidriges bleibt also stehen, die Meldung sagt es; berichtigt wird es mit "Token neu". */
+if ($li_post && sicherung_lade_eingang($_POST) !== '') {
+    $li_lb = li_lade_b(false);
+    if (sicherung_lade_eingang($_POST) !== 'ja') {
+        $li_fehler[] = sicherung_t('K_LADE_HAKEN_FEHLT', $li_lb);
+    } else {
+        $li_ld = li_lade_roh();
+        $li_lv = li_config();
+        $li_un = array();
+        if ($li_ld !== null) {
+            list($li_lneu, $li_un) = sicherung_lade_uebernehmen_stand($li_ld, $li_lv, sicherung_lade_beanstandungen($li_lb, $li_ld, $li_lv));
+            if ($li_un && li_config_schreiben($li_lneu) === false) {
+                $li_fehler[] = li_t('SICH.SCHREIBFEHLER');
+                $li_un = array();
+            }
+        }
+        if ($li_un) {
+            li_log('Lade-Beanstandungen: angezeigte Werte uebernommen: ' . implode(', ', array_map('sicherung_name', $li_un)));
+            $li_meldungen[] = sprintf(sicherung_t('K_LADE_UEBERNOMMEN', $li_lb), implode(', ', $li_un));
+        }
+    }
+}
 if ($li_post && li_einmal_schreiben($li_meldungen, $li_fehler, $li_gestartet, $li_eingaben)) {
     header('Location: index.php?form=' . rawurlencode(substr($li_tab, 4)), true, 303);
     exit;
@@ -280,7 +304,12 @@ if ($li_rahmen) {
 
 <?php foreach ($li_meldungen as $li_m) { ?><div class="sm-hinweis"><?= li_e($li_m) ?></div><?php } ?>
 <?php foreach ($li_fehler as $li_m) { ?><div class="sm-warnung"><?= li_e($li_m) ?></div><?php } ?>
+<?php /* 2.0.19: Lade-Beanstandungen (Regeln/05) - gelber Kasten; einmal je Aenderung ins Protokoll. */
+$li_lade = li_lade_beanstandungen();
+li_lade_melden($li_lade); ?>
 
+<?= sicherung_lade_kasten(li_lade_b(true), isset($li_lade) ? $li_lade : li_lade_beanstandungen(),
+        li_fmt() . '<input data-role="none" type="hidden" name="activetab" value="' . li_e($li_tab) . '">') ?>
 <?php /* Kopf (Entscheidung Nr. 43, seit 2.0.13): Statusuebersicht ueber den
    Reitern, immer sichtbar. Hierher gewandert aus dem Reiter Einstellungen,
    wo bis 2.0.12 drei Kacheln standen. Die Kennungen li-svg und li-lauf
@@ -533,6 +562,12 @@ if ($li_tab === 'tab-test') {
 } else {
     $li_zeilen[] = array(li_t('TEST.NETZ'), null, li_t('TEST.NETZ_NUR_IM_REITER'));
 }
+/* 2.0.19: Lade-Beanstandungen (Regeln/05, Sicherungsmodul 1.3.0) - rot, solange ein gespeicherter Wert beim Laden nicht
+   so gilt, wie er gespeichert ist. */
+$li_lb = li_lade_b(false);
+$li_la = li_lade_beanstandungen(null, false);
+$li_zeilen[] = array(sicherung_t('K_LADE_FRAGE', $li_lb), $li_la ? 0 : 1,
+    $li_la ? implode(' ', sicherung_lade_saetze($li_lb, $li_la)) : sicherung_t('K_LADE_KEINE', $li_lb));
 ?>
 <table class="sm-tbl">
 	<tr><th><?= li_e(li_t('TEST.SP_FRAGE')) ?></th><th><?= li_e(li_t('TEST.SP_ERGEBNIS')) ?></th><th><?= li_e(li_t('TEST.SP_GEMESSEN')) ?></th></tr>

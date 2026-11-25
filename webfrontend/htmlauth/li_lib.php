@@ -352,6 +352,13 @@ function li_config()
     }
     $schreiben = ($zustand !== 'ok') || (bool) $fehlten;
     $erfunden = false;
+    /* 2.0.19 (Lade-Beanstandungen, Regeln/05): ein vorhandenes Token, das kein Text ist (von Hand als Zahl eingetragen),
+     * bleibt als Text stehen und wird gemeldet (li_lade_beanstandungen()). Bis 2.0.18 wuerfelte die Oberflaeche dann
+     * ein neues und schrieb es in die Datei: jede Adresse im Miniserver bekam 403. Leer bleibt wie bisher: dann
+     * entsteht eines (das Formularmerkmal haengt am Token, ohne Token liesse sich nichts absenden). */
+    if (is_scalar($cfg['aktionstoken']) && !is_bool($cfg['aktionstoken']) && (string) $cfg['aktionstoken'] !== '') {
+        $cfg['aktionstoken'] = (string) $cfg['aktionstoken'];
+    }
     if (!is_string($cfg['aktionstoken']) || $cfg['aktionstoken'] === '') {
         $cfg['aktionstoken'] = li_token_erzeugen();
         $schreiben = true;
@@ -498,6 +505,45 @@ function li_cfg_lage()
 /* ------------------------------------------------------------------ */
 /* Formularmerkmal und Wachposten                                      */
 /* ------------------------------------------------------------------ */
+
+/* ==================================================================
+ * Lade-Beanstandungen (2.0.19; Regeln/05, Sicherungsmodul 1.3.0) - die einzige Einstellung ist das Aktionstoken.
+ * ================================================================== */
+
+/** Die rohen Werte der Konfigurationsdatei, null = keine lesbare Datei. Schreibt nichts. */
+function li_lade_roh()
+{
+    $p = li_paths();
+    if ($p['cfgdatei'] === '') { return null; }
+    clearstatcache(true, $p['cfgdatei']);
+    return li_json_lesen($p['cfgdatei']);
+}
+
+/** Die Beschreibung fuer die Lade-Beanstandungen; $maskiert = false fuer Tabelle und Meldungen (die Seite maskiert). */
+function li_lade_b($maskiert = true)
+{
+    $b = li_sicherung_beschreibung();
+    if (!$maskiert) { $b['e'] = function ($s) { return (string) $s; }; }
+    return $b;
+}
+
+/** Die Lade-Beanstandungen: rohe Dateiwerte gegen den verwendeten Stand ($cfg, sonst li_config()). */
+function li_lade_beanstandungen($cfg = null, $maskiert = true)
+{
+    $d = li_lade_roh();
+    if ($d === null) { return array(); }
+    return sicherung_lade_beanstandungen(li_lade_b($maskiert), $d, is_array($cfg) ? $cfg : li_config());
+}
+
+/** Einmal je Aenderung ins Protokoll (nur Namen und Gruende, nie Werte). */
+function li_lade_melden(array $beanst)
+{
+    $d = li_paths()['data'];
+    if ($d === '' || !is_dir($d)) { return; }
+    if (sicherung_lade_melden_faellig($beanst, $d . '/lade_beanstandungen.merk')) {
+        li_log(sicherung_lade_protokollzeile($beanst));
+    }
+}
 
 function li_formtoken()
 {

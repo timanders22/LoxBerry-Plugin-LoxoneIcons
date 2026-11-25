@@ -10,6 +10,10 @@ LoxoneIcons NG ist eine eigenständig weitergeführte Abspaltung von
 und Verhalten vom Original abweichen. Die interne Kennung bleibt `loxoneicons`
 — bestehende Installationen werden wie bisher aktualisiert.
 
+## Neu in 2.0.19
+
+- **Gespeichertes Aktionstoken, das beim Laden nicht gilt (Entscheidung des Hausherrn 23./24.11.2026, Regeln/05 „Lade-Beanstandungen“):** Steht in der Konfiguration ein Aktionstoken außerhalb des Musters (von Hand bearbeitet, etwa als Zahl), sagt das Plugin es jetzt: ein gelber Kasten über den Reitern nennt es (ohne seinen Wert), der Reiter *Test* zeigt die Zeile „Gelten die gespeicherten Einstellungen beim Laden so, wie sie gespeichert sind?“ rot, und das Protokoll nennt es einmal. Bis 2.0.18 wurde ein Token, das kein Text war, beim Öffnen der Oberfläche still durch ein neues ersetzt, und jede Adresse im Miniserver bekam danach 403. Jetzt bleibt es stehen; berichtigt wird es mit „Token neu“. Gemeinsames Sicherungsmodul 1.3.0.
+
 ## Neu in 2.0.18
 
 - Die Kopfzeile zeigt jetzt die installierte Fassung in derselben Form wie alle Plugins (bisher mit vorangestelltem „V“).
