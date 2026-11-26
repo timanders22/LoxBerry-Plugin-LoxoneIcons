@@ -1,6 +1,10 @@
 #!/bin/sh
 # Loxone Icons - preupgrade (laeuft als Benutzer loxberry)
 
+# [upgrade_daten] Argumente des Installers festhalten - unten sichert der gemeinsame Baustein
+# [upgrade_daten] upgrade_daten.sh (neben diesem Skript) den ganzen Datenordner.
+UPGD_ORDNER="$3"; UPGD_WURZEL="$5"
+
 ARGV3=$3   # Installationsordner des Plugins
 ARGV5=$5   # Wurzelverzeichnis des LoxBerry
 
@@ -80,6 +84,9 @@ li_satz_zahl() {
 #   3. Scheitert etwas, bleibt die alte Sicherung unangetastet, und es kommt
 #      eine Warnung statt eines stillen Endes.
 
+# 25.11.2026: der Iconteil als Funktion - seine Fruehausgaenge enden mit return statt exit, damit der
+# gemeinsame Baustein vor dem letzten "exit 0" den Datenordner in jedem Fall sichert.
+li_sichern() {
 N_LAUFEND=0
 [ -d "$LAUFEND" ] && N_LAUFEND=$(li_satz_zahl "$LAUFEND")
 
@@ -92,7 +99,7 @@ if [ "$N_LAUFEND" -eq 0 ]; then
     else
         echo "<INFO> Noch kein heruntergeladener Iconsatz vorhanden."
     fi
-    exit 0
+    return 0
 fi
 
 # --- 2. Neue Sicherung neben der alten, gezaehlt, dann getauscht ---
@@ -124,13 +131,13 @@ if [ "$N_NEU" -ne "$N_LAUFEND" ]; then
         echo "<WARNING> Die bisherige Sicherung unter $SICHER bleibt unangetastet."
     fi
     echo "<WARNING> Nach dem Update fehlende Symbole laedt postupgrade.sh nach."
-    exit 0
+    return 0
 fi
 
 if [ -d "$SICHER" ] && ! mv "$SICHER" "$ALT" 2>/dev/null; then
     li_neu_zurueck || echo "<WARNING> Der Satz liegt unter $NEU."
     echo "<WARNING> Die bisherige Sicherung liess sich nicht beiseitelegen; sie bleibt unangetastet."
-    exit 0
+    return 0
 fi
 if mv "$NEU" "$SICHER" 2>/dev/null; then
     rm -rf "$ALT" 2>/dev/null
@@ -140,5 +147,29 @@ else
     li_neu_zurueck || echo "<WARNING> Der Satz liegt unter $NEU."
     echo "<WARNING> Die neue Sicherung liess sich nicht an ihren Platz bringen."
 fi
+}
+li_sichern
 
+# Fehlerweg fuer den gemeinsamen Baustein (unten): misslingt das Sichern des Datenordners, bricht das Update
+# mit Rueckgabe 2 ab und die bisherige Fassung bleibt. Den Iconsatz hat li_sichern dann schon nach
+# $SICHER verschoben - er kommt an seinen Platz zurueck.
+upgd_bei_fehler() {
+    [ "${WIE:-}" = "verschoben" ] && [ -d "$SICHER/loxone_icons" ] && [ ! -e "$LAUFEND" ] || return 0
+    if mv "$SICHER/loxone_icons" "$LAUFEND" 2>/dev/null; then
+        rmdir "$SICHER" 2>/dev/null
+        echo "<INFO> Der heruntergeladene Iconsatz liegt wieder an seinem Platz."
+        return 0
+    fi
+    echo "<WARNING> Der Iconsatz liegt weiter unter $SICHER - das naechste Update stellt ihn zurueck."
+    return 1
+}
+# [upgrade_daten] Gemeinsamer Baustein (Werkzeuge/gemeinsam/upgrade_daten.sh): den ganzen Datenordner
+# [upgrade_daten] neben den Ordner sichern; misslingt das, bricht die Aktualisierung mit Rueckgabe 2 ab.
+if [ -f "$(dirname "$0")/upgrade_daten.sh" ] && . "$(dirname "$0")/upgrade_daten.sh"; then
+    upgrade_daten_sichern "$UPGD_ORDNER" "$UPGD_WURZEL" || exit 2
+else
+    echo "<FAIL> Der Baustein upgrade_daten.sh fehlt neben $(basename "$0") - die Aktualisierung wird abgebrochen,"
+    echo "<FAIL> die bisherige Fassung bleibt installiert."
+    exit 2
+fi
 exit 0
